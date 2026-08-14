@@ -1,0 +1,19 @@
+# Build artifacts
+build/
+out/
+cmake-build-*/
+
+# Editor / OS files
+.DS_Store
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Generated firmware artifacts
+*.elf
+*.uf2
+*.bin
+*.hex
+*.map
