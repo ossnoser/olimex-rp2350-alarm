@@ -11,3 +11,6 @@ Sequential index of project tasks.
 | TASK-0005 | Development toolchain and framework | Approved / completed | [docs/tasks/TASK-0005-development-toolchain-and-framework.md](docs/tasks/TASK-0005-development-toolchain-and-framework.md) |
 | TASK-0006 | Development references and installation baseline | Approved / completed | [docs/tasks/TASK-0006-development-references-and-installation-baseline.md](docs/tasks/TASK-0006-development-references-and-installation-baseline.md) |
 | TASK-0007 | Initialize Git repository | Approved / completed | [docs/tasks/TASK-0007-initialize-git-repository.md](docs/tasks/TASK-0007-initialize-git-repository.md) |
+| TASK-0008 | Developer onboarding guide | Approved / completed | [docs/tasks/TASK-0008-developer-onboarding-guide.md](docs/tasks/TASK-0008-developer-onboarding-guide.md) |
+| TASK-0009 | Project environment script | Approved / completed | [docs/tasks/TASK-0009-project-environment-script.md](docs/tasks/TASK-0009-project-environment-script.md) |
+| TASK-0010 | Development environment verification | Approved / completed | [docs/tasks/TASK-0010-development-environment-verification.md](docs/tasks/TASK-0010-development-environment-verification.md) |
