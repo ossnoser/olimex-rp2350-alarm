@@ -11,4 +11,5 @@ This directory documents the development environment, toolchain, build tools, an
 - [Developer onboarding guide](onboarding.md): step-by-step guide to become operational on the project.
 - [Project environment script](environment.md): usage of the project `env.sh` setup script.
 - [Setup verification](setup-verification.md): verified status of the macOS Intel development environment.
+- [QP/C++ integration guide](qpcpp-integration-guide.md): planning guide for the initial `qpcpp` LED blinking proof of concept.
 - [Language/toolchain/framework decision](../decisions/DEC-0002-language-toolchain-framework.md): formal design decision.

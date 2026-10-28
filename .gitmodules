@@ -1,0 +1,3 @@
+[submodule "third_party/qpcpp"]
+	path = third_party/qpcpp
+	url = https://github.com/QuantumLeaps/qpcpp.git
