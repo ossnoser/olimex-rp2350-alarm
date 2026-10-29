@@ -17,3 +17,5 @@ Sequential index of project tasks.
 | TASK-0011 | QP/C++ integration guide planning | Approved / completed | [docs/tasks/TASK-0011-qpcpp-integration-guide-planning.md](docs/tasks/TASK-0011-qpcpp-integration-guide-planning.md) |
 | TASK-0012 | Pico 2 W QP/C++ Blinky integration plan | Approved planning documentation / completed | [docs/tasks/TASK-0012-pico2-w-qpcpp-blinky-plan.md](docs/tasks/TASK-0012-pico2-w-qpcpp-blinky-plan.md) |
 | TASK-0013 | Pico 2 W QP/C++ Blinky implementation | Approved / completed | [docs/tasks/TASK-0013-pico2-w-qpcpp-blinky-implementation.md](docs/tasks/TASK-0013-pico2-w-qpcpp-blinky-implementation.md) |
+| TASK-0014 | Blinky USB serial output | Approved / completed | [docs/tasks/TASK-0014-blinky-usb-serial.md](docs/tasks/TASK-0014-blinky-usb-serial.md) |
+| TASK-0015 | Interactive Blinky timing plan | Approved / completed | [docs/tasks/TASK-0015-interactive-blinky-timing-plan.md](docs/tasks/TASK-0015-interactive-blinky-timing-plan.md) |

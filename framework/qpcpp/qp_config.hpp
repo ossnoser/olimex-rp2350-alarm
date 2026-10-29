@@ -3,7 +3,7 @@
 // or (at your option) any later version.
 #pragma once
 
-#define QF_MAX_ACTIVE 1U
+#define QF_MAX_ACTIVE 2U
 #define QF_MAX_TICK_RATE 1U
 
 // The GNU Arm QV port uses PRIMASK when QF_USE_BASEPRI is undefined.

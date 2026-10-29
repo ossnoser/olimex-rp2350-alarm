@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
+#include "command_parser.hpp"
 
 namespace Blinky {
-
-// Start once, after QP and the BSP have been initialized.
 void start();
-
+// Post one immutable event ahead of any queued timeout; call from Console.
+void requestTiming(Commands::Timing timing);
 } // namespace Blinky

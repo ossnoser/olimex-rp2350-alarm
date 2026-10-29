@@ -1,5 +1,110 @@
 # QP/C++ integration guide
 
+## Current example: interactive off/on timings (TASK-0015)
+
+**Status:** completed with embedded Debug build, all four sanitizer-enabled host tests, and user-confirmed hardware smoke validation. Board checks covered prompt/echo, accepted asymmetric timings, invalid values, spaces, leading zeros, blank lines, editing, overflow/Tab rejection and recovery, pasted-command ordering, and terminal reconnection preserving settings while discarding partial input. After the USB-service follow-up, prompt/accept/reject/timing were rechecked and enumeration succeeded immediately after flashing and on two normal cold starts. Explicit line-ending variants, exact timeout races and simulated backpressure were validated on the host rather than instrumented on the board. This supersedes the output-only TASK-0014 protocol described below.
+
+The Pico 2 W boots with 0.5 seconds off / 0.5 seconds on. Connect a Mac terminal to enter timings:
+
+```bash
+ls /dev/cu.usbmodem*
+screen /dev/cu.usbmodemYOUR_DEVICE 115200
+```
+
+Use the actual enumerated device path. The baud-rate argument is conventional for USB CDC; do not enable terminal local echo because the device echoes input. Exit with Ctrl-A, then **\\**, then **y**. If that prefix does not work, open a second Mac Terminal, run `screen -ls`, identify the Pico session, and close only that session with `screen -S SESSION_NAME -X quit`.
+
+On connection:
+
+```text
+Enter seconds off,on (1..5):
+```
+
+Enter, for example, `1,5` followed by Enter: one second off and five seconds on. The device replies `Accepted` and prompts again. `0,6` produces `Invalid` and another prompt, without changing settings. `Blink!` is no longer printed.
+
+Protocol rules:
+
+- Ignore ordinary spaces; require exactly one digit 1..5, comma, one digit 1..5. No signs, leading zeros, decimals, tabs, or extra characters.
+- Accept CR, LF, or CRLF as one line ending. Blank lines are invalid.
+- BS/DEL edit the preceding character, including spaces, and update the echo.
+- A line may contain at most 32 characters including spaces, excluding Enter. Overflow or unsupported controls invalidate the entire line through Enter; only a new line recovers.
+- The current LED phase completes unchanged. Accepted values apply at the next transition; the latest accepted pair wins. A configuration event takes precedence over a timeout that is queued but not dispatched.
+- Closing the terminal discards partial input/pending output, not accepted settings. Reopening gives a fresh prompt. Board reboot restores 0.5 s / 0.5 s defaults.
+
+Architecture: Blinky (priority 2) and Console (priority 1) run cooperatively on core 0. Console polls input every 20 ms and yields after at most one submission. TinyUSB event notifications also post a coalesced Console service event for prompt USB-stack handling; these events do not parse input or change the input-poll budget. All USB-stack servicing stays in application context. Per poll it processes at most 16 input bytes and offers at most 64 output bytes. It uses a 256-byte output ring and pauses input consumption before output capacity is exhausted. Each active object has an eight-entry queue. A pure parser and Console session core have no SDK/QP dependencies; the active-object adapter and LED state machine remain in `examples/blinky/`. The BSP owns TinyUSB CDC, including descriptors, session tracking and actual-byte-count nonblocking I/O. USB stdio, UART stdio, networking and QS are disabled. The BSP uses the Pico SDK's default CDC development VID/PID, not a production-specific allocation.
+
+### Build and automated tests
+
+Embedded build (after `source env.sh`):
+
+```bash
+cmake -S . -B build/pico2_w -G Ninja \
+  -DPICO_BOARD=pico2_w -DPICO_PLATFORM=rp2350-arm-s \
+  -DCMAKE_BUILD_TYPE=Debug -DPICO_DEOPTIMIZED_DEBUG=1
+cmake --build build/pico2_w
+```
+
+Artifacts remain `build/pico2_w/examples/blinky/qpcpp-blinky.elf` and `.uf2`.
+
+Native Mac tests, independent of the cross-compilation build:
+
+```bash
+cmake -S tests/host -B build/host -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake --build build/host
+ctest --test-dir build/host --output-on-failure
+```
+
+Address/undefined-behavior sanitizers default to enabled on Clang/GNU. The parser/Console suite covers grammar, editing, framing, buffering, partial writes, bounded work, and reconnection with a mock transport. The timing suite runs production Blinky/Console with the real QP core/QV scheduler, a single-threaded host critical-section shim and a mock BSP. It covers startup without a terminal, phase preservation, event precedence and command ordering, but not the Arm port or USB hardware.
+
+### Hardware validation checklist
+
+1. Flash the updated UF2 via BOOTSEL only after authorization. Confirm default blinking before opening a terminal.
+2. Open `screen`, confirm one prompt, device echo/editing, and no `Blink!` messages.
+3. Submit `1,5`, then `5,1`; check `Accepted` and off/on ordering and cadence. Change values mid-phase and verify it completes before the new duration applies.
+4. Submit `0,6`, `7,8`, blank input, leading zeros, an overlong line, and unsupported controls; check `Invalid` and recovery on the next valid line.
+5. Test CR/LF/CRLF if the terminal permits selecting them; each submission should yield one response/prompt.
+6. Paste several short commands, confirm each response and that the latest accepted pair wins without restarting a phase.
+7. Close/reopen with partial input; verify settings persist and a fresh prompt appears without stale commands/output. Reboot and confirm defaults return.
+
+The user confirmed the board checks listed in the status above. The first post-UF2 boot did not enumerate USB; a normal physical USB reconnect enumerated the device successfully. A later reboot restored the default LED cadence, as confirmed by the user, but USB enumeration failed again. The approved follow-up supplements polling with event-driven USB servicing. After reflashing, USB enumerated immediately and on two normal unplug/reconnect cycles, with user-confirmed console operation and restored default timings. The failure has not recurred in these smoke checks; its exact root cause and long-term reliability are not established. Visual timing checks are not instrument measurements. TinyUSB servicing is nonwaiting but internally drains queued USB events; no hard real-time or hostile-host execution bound is claimed. Fixed buffers cannot preserve arbitrarily large pastes if a host ignores backpressure.
+
+## Historical milestones
+
+The sections below record earlier implementations and their actual hardware validation; their output-only behavior does not describe TASK-0015.
+
+## USB serial extension (TASK-0014)
+
+**Status:** Debug build and hardware smoke test passed. The user confirmed `Blink!` output with LED blinking, continued blinking while the terminal was closed, and output resuming once per second without a backlog burst after reopening it. Timing was visually observed, not instrument-measured. The previously validated LED-only firmware is described below.
+
+Blinky now calls `BSP::writeLine("Blink!")` immediately after entering LED-on. The BSP sends `Blink!\r\n` over USB CDC, with UART and QS still disabled. USB initialization never waits for a terminal. Output is best effort, with zero USB-buffer and stdio-lock wait timeouts and no explicit blocking flush. Disconnected messages are skipped; there is no application replay queue. This is not a hard real-time guarantee: the USB stack still needs processing time, and congestion/disconnection can drop output, including partial lines.
+
+Build using the commands below; the ELF/UF2 paths are unchanged. The build was verified with SDK 2.3.0 and the approved Debug settings. Compilation commands for BSP and SDK stdio sources were checked for consistent zero-wait settings, USB enabled, and UART disabled.
+
+### Connect a Mac terminal
+
+After explicitly authorizing and flashing the updated UF2, leave the board connected over a data-capable USB cable in normal firmware mode (not BOOTSEL).
+
+1. Open Terminal on the Mac and find the USB CDC device:
+
+   ```bash
+   ls /dev/cu.usbmodem*
+   ```
+
+2. Select the device belonging to the Pico 2 W (disconnect/reconnect to identify it if several appear), then open it using its actual path:
+
+   ```bash
+   screen /dev/cu.usbmodemYOUR_DEVICE 115200
+   ```
+
+   The speed argument is required by `screen`; USB CDC output timing is not determined by this baud rate. Normal terminal opening asserts DTR, which the SDK uses to recognize a connected terminal.
+
+3. Expect one `Blink!` line each time the LED turns on, approximately once per second. No startup banner or backlog is sent.
+4. Exit with **Ctrl-A**, then **\\**, then confirm with **y**. Only one program should own the serial device at a time.
+5. Confirm the LED keeps blinking with the terminal closed, then reopen it and check that current messages resume without an application backlog.
+
+If the device is absent, verify the updated firmware is flashed and the board is not in BOOTSEL mode. If it is busy, close other terminal/serial-monitor sessions. The device path may change after reboot or reconnect; enumerate it again.
+
+Flashing, output/blinking observation, and terminal-close/reopen behavior passed with user confirmation. USB saturation/backpressure timing has not been stress-tested.
+
 ## Current implementation: standalone Pico 2 W Blinky
 
 TASK-0013 implements the approved TASK-0012 plan. The current proof of concept targets a standalone Raspberry Pi Pico 2 W, not the earlier Olimex/carrier baseline described below. Non-wireless Pico 2 and carrier support are deferred.
