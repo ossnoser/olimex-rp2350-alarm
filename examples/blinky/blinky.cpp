@@ -9,29 +9,30 @@
 namespace {
 Q_DEFINE_THIS_MODULE("blinky")
 constexpr QP::QSignal TIMEOUT_SIG = QP::Q_USER_SIG;
-constexpr QP::QSignal TIMING_SIG = QP::Q_USER_SIG + 1U;
+constexpr QP::QSignal DUTY_SIG = QP::Q_USER_SIG + 1U;
+constexpr unsigned CYCLE_TICKS = BSP::TICKS_PER_SECOND;
+static_assert(CYCLE_TICKS >= 10U && CYCLE_TICKS % 10U == 0U);
 
-struct TimingEvent : QP::QEvt {
-    Commands::Timing const timing;
-    constexpr TimingEvent(unsigned off, unsigned on)
-        : QP::QEvt(TIMING_SIG), timing{off, on} {}
+struct DutyEvent : QP::QEvt {
+    Commands::DutyCycle const duty;
+    constexpr explicit DutyEvent(unsigned tenths)
+        : QP::QEvt(DUTY_SIG), duty{tenths} {}
 };
 
 template<std::size_t... I>
 constexpr auto makeEvents(std::index_sequence<I...>) {
-    return std::array<TimingEvent, sizeof...(I)>{
-        TimingEvent(static_cast<unsigned>(I / 5U + 1U),
-                    static_cast<unsigned>(I % 5U + 1U))...};
+    return std::array<DutyEvent, sizeof...(I)>{
+        DutyEvent(static_cast<unsigned>(I + 1U))...};
 }
-constexpr auto timingEvents = makeEvents(std::make_index_sequence<25>{});
+constexpr auto dutyEvents = makeEvents(std::make_index_sequence<9>{});
 
 class BlinkyAO final : public QP::QActive {
 public:
     BlinkyAO() : QP::QActive(&initial), timeout_(this, TIMEOUT_SIG) {}
 private:
     QP::QTimeEvt timeout_;
-    unsigned offTicks_ = BSP::TICKS_PER_SECOND / 2U;
-    unsigned onTicks_ = BSP::TICKS_PER_SECOND / 2U;
+    unsigned offTicks_ = CYCLE_TICKS / 2U;
+    unsigned onTicks_ = CYCLE_TICKS / 2U;
     Q_STATE_DECL(initial);
     Q_STATE_DECL(running);
     Q_STATE_DECL(off);
@@ -50,10 +51,10 @@ Q_STATE_DEF(BlinkyAO, initial) {
 }
 
 Q_STATE_DEF(BlinkyAO, running) {
-    if (e->sig == TIMING_SIG) {
-        auto const &timing = static_cast<TimingEvent const *>(e)->timing;
-        offTicks_ = timing.offSeconds * BSP::TICKS_PER_SECOND;
-        onTicks_ = timing.onSeconds * BSP::TICKS_PER_SECOND;
+    if (e->sig == DUTY_SIG) {
+        auto const tenths = static_cast<DutyEvent const *>(e)->duty.tenths;
+        onTicks_ = tenths * (CYCLE_TICKS / 10U);
+        offTicks_ = CYCLE_TICKS - onTicks_;
         // Do not touch the current phase's already-armed one-shot timer.
         return Q_HANDLED();
     }
@@ -92,9 +93,7 @@ void Blinky::start() {
     instance().start(2U, queue, 8U, nullptr, 0U);
 }
 
-void Blinky::requestTiming(Commands::Timing timing) {
-    Q_REQUIRE_ID(1, timing.offSeconds >= 1U && timing.offSeconds <= 5U
-                    && timing.onSeconds >= 1U && timing.onSeconds <= 5U);
-    unsigned const index = (timing.offSeconds - 1U) * 5U + timing.onSeconds - 1U;
-    instance().postLIFO(&timingEvents[index]);
+void Blinky::requestDutyCycle(Commands::DutyCycle duty) {
+    Q_REQUIRE_ID(1, duty.tenths >= 1U && duty.tenths <= 9U);
+    instance().postLIFO(&dutyEvents[duty.tenths - 1U]);
 }

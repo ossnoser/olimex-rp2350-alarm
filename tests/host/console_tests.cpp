@@ -12,8 +12,8 @@
     std::cerr << __LINE__ << ": " #condition "\n"; std::exit(1); } } while (false)
 
 namespace {
-std::vector<Commands::Timing> accepted;
-void accept(Commands::Timing timing) { accepted.push_back(timing); }
+std::vector<Commands::DutyCycle> accepted;
+void accept(Commands::DutyCycle duty) { accepted.push_back(duty); }
 
 struct FakePort : Console::Port {
     Console::Connection status{true, 1};
@@ -62,30 +62,31 @@ std::size_t occurrences(std::string const &text, std::string const &needle) {
 }
 
 void parserTests() {
-    for (unsigned off = 1; off <= 5; ++off) {
-        for (unsigned on = 1; on <= 5; ++on) {
-            auto text = " " + std::to_string(off) + "  ,  " + std::to_string(on) + " ";
-            Commands::Timing result{};
+    for (unsigned duty = 1; duty <= 9; ++duty) {
+        for (std::string text : {std::to_string(duty), "  " + std::to_string(duty) + "  "}) {
+            Commands::DutyCycle result{};
             CHECK(Commands::parse(text.data(), text.size(), result));
-            CHECK(result.offSeconds == off && result.onSeconds == on);
+            CHECK(result.tenths == duty);
         }
     }
-    for (std::string text : {"", "   ", "0,6", "7,8", "6,1", "1,0", "01,5",
-            "+1,2", "-1,2", "1.5,2", "1,", ",2", "1,2,3", "12,3", "1,2x",
-            "1\t,2", "1\n,2", "1\r,2", "a,b", "1;2", "1 2,3"}) {
-        Commands::Timing result{9, 9};
+    for (std::string text : {"", "   ", "0", "10", "99", "01", "05", "1,5", "7,8",
+            "+1", "-1", "1.5", "1,", ",2", "12", "1x", "1\t", "1\n", "1\r",
+            "a", "1;2", "1 2"}) {
+        Commands::DutyCycle result{42};
         CHECK(!Commands::parse(text.data(), text.size(), result));
-        CHECK(result.offSeconds == 9 && result.onSeconds == 9);
+        CHECK(result.tenths == 42);
     }
+    char const embeddedNull[] = {'1', '\0', ' '};
+    Commands::DutyCycle result{};
+    CHECK(!Commands::parse(embeddedNull, sizeof embeddedNull, result));
 }
 
 void lineTests() {
     for (std::string ending : {"\r", "\n", "\r\n"}) {
         Harness h;
-        h.send(" 2 , 3 " + ending);
-        CHECK(accepted.size() == 1);
-        CHECK(accepted[0].offSeconds == 2 && accepted[0].onSeconds == 3);
-        CHECK(h.port.tx == " 2 , 3 \r\nAccepted\r\n" + std::string(Console::PROMPT));
+        h.send(" 7 " + ending);
+        CHECK(accepted.size() == 1 && accepted[0].tenths == 7);
+        CHECK(h.port.tx == " 7 \r\nAccepted\r\n" + std::string(Console::PROMPT));
     }
     Harness h;
     h.send("\r\n\n \r\n");
@@ -93,34 +94,38 @@ void lineTests() {
     CHECK(occurrences(h.port.tx, "Invalid\r\n") == 3);
     CHECK(occurrences(h.port.tx, Console::PROMPT) == 3);
     h.port.tx.clear();
-    h.send("1,2\r"); h.send("\n");
+    h.send("1\r"); h.send("\n");
     CHECK(accepted.size() == 1);
     CHECK(occurrences(h.port.tx, "Accepted\r\n") == 1);
     h.port.tx.clear();
-    h.port.feed("1,1\n2,2\n3,3\n");
+    h.port.feed("1\n2\n3\n");
     h.poll();
     CHECK(accepted.size() == 2 && !h.port.rx.empty());
     h.poll(20);
-    CHECK(accepted.size() == 4);
-    CHECK(accepted.back().offSeconds == 3);
+    CHECK(accepted.size() == 4 && accepted.back().tenths == 3);
+    for (unsigned duty = 1; duty <= 9; ++duty) h.send(std::to_string(duty) + "\n");
+    CHECK(accepted.size() == 13);
+    for (unsigned duty = 1; duty <= 9; ++duty) CHECK(accepted[3 + duty].tenths == duty);
+    h.send("0\n1,5\n10\n");
+    CHECK(accepted.size() == 13);
 }
 
 void editingAndBoundsTests() {
     Harness h;
-    h.send("\b\x7f" "1,4\b5\n");
-    CHECK(accepted.size() == 1 && accepted.back().onSeconds == 5);
+    h.send("\b\x7f" "4\b5\n");
+    CHECK(accepted.size() == 1 && accepted.back().tenths == 5);
     CHECK(h.port.tx.find("4\b \b5") != std::string::npos);
-    h.send("2,  \x7f\b3\n");
-    CHECK(accepted.size() == 2 && accepted.back().onSeconds == 3);
-    h.send(std::string(29, ' ') + "1,5\n"); // Exactly 32 entered characters.
+    h.send("  \x7f\b3\n");
+    CHECK(accepted.size() == 2 && accepted.back().tenths == 3);
+    h.send(std::string(31, ' ') + "5\n"); // Exactly 32 entered characters.
     CHECK(accepted.size() == 3);
-    for (std::string text : std::vector<std::string>{std::string(30, ' ') + "1,5\b\n",
-                            "1\t,2\b\n", "1,2\x1b[A\n"}) {
+    for (std::string text : std::vector<std::string>{std::string(32, ' ') + "5\b\n",
+                            "1\t\b\n", "2\x1b[A\n"}) {
         auto before = accepted.size();
         h.port.tx.clear(); h.send(text);
         CHECK(accepted.size() == before);
         CHECK(occurrences(h.port.tx, "Invalid\r\n") == 1);
-        h.send("3,4\n");
+        h.send("4\n");
         CHECK(accepted.size() == before + 1);
     }
 }
@@ -128,43 +133,41 @@ void editingAndBoundsTests() {
 void bufferingTests() {
     Harness h;
     h.port.writeLimit = 0;
-    for (unsigned i = 0; i < 200; ++i) h.port.feed("1,5\n");
+    for (unsigned i = 0; i < 200; ++i) h.port.feed("9\n");
     h.poll(300);
     CHECK(!h.port.rx.empty());
-    CHECK(accepted.size() < 10); // Input paused by bounded TX capacity.
+    CHECK(accepted.size() < 10);
     CHECK(h.port.tx.empty());
-    h.port.writeLimit = 1; // Force partial writes and ring-buffer wrapping.
-    h.poll(15000);
-    CHECK(h.port.rx.empty());
-    CHECK(accepted.size() == 200);
+    h.port.writeLimit = 1; // Partial writes and ring-buffer wrapping.
+    h.poll(20000);
+    CHECK(h.port.rx.empty() && accepted.size() == 200);
     std::string expected;
     for (unsigned i = 0; i < 200; ++i)
-        expected += "1,5\r\nAccepted\r\n" + std::string(Console::PROMPT);
+        expected += "9\r\nAccepted\r\n" + std::string(Console::PROMPT);
     CHECK(h.port.tx == expected);
 }
 
 void connectionTests() {
     Harness h;
     h.port.writeLimit = 0;
-    h.send("2,3\n4,");
+    h.send("3\n4");
     CHECK(accepted.size() == 1);
     h.port.status = {false, 2}; h.port.rx.clear(); h.poll();
     h.port.status = {true, 3}; h.port.writeLimit = 64; h.poll(10);
-    CHECK(h.port.tx == Console::PROMPT); // No old echo or response backlog.
+    CHECK(h.port.tx == Console::PROMPT);
     h.send("1\n");
-    CHECK(accepted.size() == 1); // Not combined with old partial "4,".
+    CHECK(accepted.size() == 2 && accepted.back().tenths == 1); // Not old "41".
     h.port.tx.clear();
-    h.send("5,");
-    h.port.tx.clear();
-    ++h.port.status.generation; // Close/reopen observed within one service.
+    h.send("5"); h.port.tx.clear();
+    ++h.port.status.generation;
     h.poll(10);
     CHECK(h.port.tx == Console::PROMPT);
     h.send("2\n");
-    CHECK(accepted.size() == 1);
+    CHECK(accepted.size() == 3 && accepted.back().tenths == 2);
 }
 }
 
 int main() {
     parserTests(); lineTests(); editingAndBoundsTests(); bufferingTests(); connectionTests();
-    std::cout << "Parser and console tests passed\n";
+    std::cout << "Duty-cycle parser and console tests passed\n";
 }

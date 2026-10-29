@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "blinky.hpp"
 #include "console.hpp"
+#include "console_session.hpp"
 #include "bsp.hpp"
 #include "qp_port.hpp"
 #include "qsafe.h"
-#include <algorithm>
 #include <cstdlib>
 #include <deque>
 #include <iostream>
@@ -75,22 +75,23 @@ int main(int argc, char **argv) {
     if (disconnectedTest) connected = false;
     QP::QF::init(); Blinky::start(); Console::start(); drain();
     last(0, false);
+    CHECK(std::string(Console::PROMPT) == "Enter duty cycle (1..9, 10%..90% on):\r\n");
     if (argc > 1 && std::string(argv[1]) == "usb_wakeup") {
         CHECK(usbWakeup != nullptr);
-        CHECK(usbServiceCalls == 1); // Kick work queued before registration.
-        feed("1,5\n");
+        CHECK(usbServiceCalls == 1);
+        feed("9\n");
         auto before = usbServiceCalls;
         for (unsigned i = 0; i < 100; ++i) usbWakeup();
         drain();
-        CHECK(usbServiceCalls == before + 1); // No event-queue overflow.
-        CHECK(rx.size() == 4 && tx.empty()); // No parsing outside the poll.
+        CHECK(usbServiceCalls == before + 1);
+        CHECK(rx.size() == 2 && tx.empty());
         wakeDuringService = true;
         before = usbServiceCalls;
         usbWakeup(); drain();
-        CHECK(usbServiceCalls == before + 2); // New work is not lost.
-        CHECK(rx.size() == 4 && tx.empty());
+        CHECK(usbServiceCalls == before + 2);
+        CHECK(rx.size() == 2 && tx.empty());
         rx.clear();
-        advance(50); last(50, true); // Normal tick/LED schedule unchanged.
+        advance(50); last(50, true);
         std::cout << "USB notifications coalesce and preserve polling limits\n";
         return 0;
     }
@@ -100,48 +101,63 @@ int main(int argc, char **argv) {
         advance(50); last(100, false);
         CHECK(tx.empty());
         connected = true; ++generation; advance(2);
-        CHECK(tx == "Enter seconds off,on (1..5):\r\n");
-        std::cout << "Startup without a terminal uses default timings\n";
+        CHECK(tx == Console::PROMPT);
+        std::cout << "Startup without a terminal defaults to 50% duty cycle\n";
         return 0;
     }
     advance(2);
-    CHECK(tx == "Enter seconds off,on (1..5):\r\n");
-    feed("1,5\n"); advance(2);
+    CHECK(tx == Console::PROMPT);
+    feed("1\n"); advance(2);
     CHECK(tx.find("Accepted\r\n") != std::string::npos);
-    last(0, false); // Accepted input does not restart/shorten the default phase.
-    advance(46); last(50, true);
-    feed("2,3\n"); advance(2); last(50, true);
-    advance(497); last(50, true); // Running 5-second on phase remains unchanged.
+    last(0, false); // Do not restart/shorten the initial 500 ms off phase.
+    advance(46); last(50, true); // Newly entered on phase is 100 ms.
+    feed("9\n"); advance(2); last(50, true);
+    advance(7); last(50, true); // Running on phase keeps its 100 ms duration.
 
-    // Model a command posted while Console is running and Blinky's timeout
-    // has become queued. The LIFO configuration event must beat that timeout.
-    tick(false); // tick 550: original on phase expires.
-    Blinky::requestTiming({4, 1});
-    drain(); last(550, false);
-    advance(399); last(550, false);
-    tick(false); // tick 950: off expires; new on duration must apply now.
-    Blinky::requestTiming({2, 2});
-    drain(); last(950, true);
-    advance(200); last(1150, false);
+    tick(false); // Tick 60 queues the timeout while Console could be running.
+    Blinky::requestDutyCycle({7});
+    drain(); last(60, false); // New off phase is 300 ms, not 100 ms from '9'.
+    advance(29); last(60, false);
+    tick(false); // Tick 90 queues an off timeout.
+    Blinky::requestDutyCycle({2});
+    drain(); last(90, true); // New on phase is 200 ms.
+    advance(20); last(110, false);
 
-    // Console must yield after each command, so LIFO never reverses commands.
-    feed("3,4\n1,2\n");
+    feed("8\n3\n");
     advance(2); CHECK(!rx.empty());
     advance(2); CHECK(rx.empty());
-    advance(196); last(1350, true);
-    advance(199); last(1350, true);
-    advance(1); last(1550, false); // Latest pair is 1 second off, 2 on.
+    advance(76); last(190, true); // Old off phase (800 ms) finished unchanged.
+    advance(29); last(190, true);
+    advance(1); last(220, false); // Latest command '3' wins: 300 ms on.
 
-    feed("0,6\n"); advance(2);
+    feed("0\n1,5\n"); advance(4);
     CHECK(tx.find("Invalid\r\n") != std::string::npos);
-    feed("4,"); advance(2);
+    feed("4"); advance(2);
     connected = false; ++generation; advance(2);
     tx.clear(); rx.clear();
     connected = true; ++generation; advance(2);
-    CHECK(tx == "Enter seconds off,on (1..5):\r\n");
-    feed("5\n"); advance(2);
+    CHECK(tx == Console::PROMPT);
+    feed("0\n"); advance(2);
     CHECK(tx.find("Invalid\r\n") != std::string::npos);
-    advance(90); last(1650, true); // Settings survive disconnect and invalid data.
+    advance(58); last(290, true); // Settings survive disconnect/invalid input.
+
+    // Exercise every immutable command event through Console and verify two
+    // consecutive settled phases: on + off is exactly 100 ticks (one second).
+    for (unsigned duty = 1; duty <= 9; ++duty) {
+        auto previousChanges = changes.size();
+        feed(std::to_string(duty) + "\n"); advance(2);
+        CHECK(rx.empty());
+        unsigned waited = 0;
+        while (changes.size() == previousChanges && waited++ < 100) tick();
+        CHECK(changes.size() == previousChanges + 1);
+        unsigned const start = now;
+        bool const phase = changes.back().on;
+        unsigned const firstDuration = (phase ? duty : 10U - duty) * 10U;
+        advance(firstDuration - 1); last(start, phase);
+        tick(); last(start + firstDuration, !phase);
+        advance(100U - firstDuration - 1U); last(start + firstDuration, !phase);
+        tick(); last(start + 100U, phase);
+    }
     CHECK(tx.find("Blink!") == std::string::npos);
-    std::cout << "Real QP/QV timing and command-ordering tests passed\n";
+    std::cout << "Real QP/QV duty-cycle timing and ordering tests passed\n";
 }

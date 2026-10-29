@@ -5,7 +5,7 @@
 #include <cstdint>
 
 namespace Console {
-inline constexpr char PROMPT[] = "Enter seconds off,on (1..5):\r\n";
+inline constexpr char PROMPT[] = "Enter duty cycle (1..9, 10%..90% on):\r\n";
 
 struct Connection {
     bool connected;
@@ -25,12 +25,14 @@ protected:
 
 class Session {
 public:
-    using Accept = void (*)(Commands::Timing);
+    using Accept = void (*)(Commands::DutyCycle);
     void poll(Port &port, Accept accept);
 
 private:
     static constexpr std::size_t TX_SIZE = 256;
     static constexpr std::size_t RESPONSE_RESERVE = 80;
+    static_assert(RESPONSE_RESERVE >= sizeof(PROMPT) - 1U + 12U);
+    static_assert(TX_SIZE >= RESPONSE_RESERVE);
     char line_[32]{};
     std::size_t length_ = 0;
     bool invalid_ = false;

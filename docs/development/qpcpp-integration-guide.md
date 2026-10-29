@@ -1,6 +1,47 @@
 # QP/C++ integration guide
 
-## Current example: interactive off/on timings (TASK-0015)
+## Current example: duty-cycle commands (TASK-0016)
+
+**Status:** completed with Debug firmware build, all four sanitizer-enabled host tests, and user-confirmed hardware smoke validation. Device checks passed for 10%/50%/90% settings, invalid-input preservation, terminal reconnect retaining 90%, reboot restoring 50%, and the prompt after USB re-enumeration. The device path changed after an upstream hub/adapter power cycle; always enumerate `/dev/cu.usbmodem*` rather than assuming a previous path. Timing was visually observed; all nine exact phase lengths were verified in host simulation, not instrumented on the board. This replaces the TASK-0015 off/on-pair protocol; earlier sections below are historical.
+
+Connect the normally booted Pico 2 W from macOS:
+
+```bash
+ls /dev/cu.usbmodem*
+screen /dev/cu.usbmodemYOUR_DEVICE 115200
+```
+
+Use the actual device path. Keep terminal local echo disabled; the device echoes typed input. If Ctrl-A followed by `\\` and `y` does not close `screen`, use a second Terminal: `screen -ls`, then `screen -S SESSION_NAME -X quit` for the specific Pico session.
+
+The prompt is:
+
+```text
+Enter duty cycle (1..9, 10%..90% on):
+```
+
+Enter one digit and press Enter. Ordinary spaces are ignored. Valid input prints `Accepted`, invalid input prints `Invalid`, and both are followed by another prompt. Input such as `0`, `10`, `01`, `1,5`, signs, decimals, tabs, and extra characters is invalid.
+
+| Input | LED on | LED off | Stable period |
+|---|---|---|---|
+| `1` | 100 ms | 900 ms | 1 second |
+| `2` | 200 ms | 800 ms | 1 second |
+| `3` | 300 ms | 700 ms | 1 second |
+| `4` | 400 ms | 600 ms | 1 second |
+| `5` | 500 ms | 500 ms | 1 second |
+| `6` | 600 ms | 400 ms | 1 second |
+| `7` | 700 ms | 300 ms | 1 second |
+| `8` | 800 ms | 200 ms | 1 second |
+| `9` | 900 ms | 100 ms | 1 second |
+
+Boot defaults to 50%, initially off, without waiting for a terminal. Accepted updates do not restart the running phase: the next entered state uses the new duty cycle. A transition cycle can therefore contain an old and a new duration; once settings are stable, each complete on/off cycle is one second. Latest accepted input wins; invalid input leaves settings unchanged. Closing the terminal discards unfinished input but preserves the duty cycle. Reboot restores 50%.
+
+CR/LF/CRLF, device echo, BS/DEL editing, the 32-character line bound, overflow/control recovery, fixed transmit buffering, and event-driven USB servicing are unchanged. Blinky uses nine immutable command events instead of 25 timing-pair events. Application files remain separate from the unchanged BSP transport. The 100 Hz tick provides exact 10% increments for the one-second period.
+
+Build/test commands and artifact paths below remain unchanged. Host tests now cover all nine valid digits and actual on/off durations using the real QP/QV scheduler, including stable one-second periods, phase preservation, queued-timeout precedence, latest-command-wins, framing/editing, buffering, reconnect, no-terminal startup, and coalesced USB service. These do not replace device timing/USB tests.
+
+For repeating the board test (obtain authorization before flashing): flash the new UF2, check the new prompt and 50% boot default, try `1`, `5`, and `9`, and verify short/equal/long on durations with a one-second steady period. Try `0`, `10`, and `1,5`; each must be invalid without changing settings. Check terminal reconnect retains the setting and a board reboot restores 50%. Record visual timing separately from instrument measurements.
+
+## Previous example: interactive off/on timings (TASK-0015)
 
 **Status:** completed with embedded Debug build, all four sanitizer-enabled host tests, and user-confirmed hardware smoke validation. Board checks covered prompt/echo, accepted asymmetric timings, invalid values, spaces, leading zeros, blank lines, editing, overflow/Tab rejection and recovery, pasted-command ordering, and terminal reconnection preserving settings while discarding partial input. After the USB-service follow-up, prompt/accept/reject/timing were rechecked and enumeration succeeded immediately after flashing and on two normal cold starts. Explicit line-ending variants, exact timeout races and simulated backpressure were validated on the host rather than instrumented on the board. This supersedes the output-only TASK-0014 protocol described below.
 

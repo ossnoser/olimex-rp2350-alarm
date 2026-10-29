@@ -3,12 +3,11 @@
 #include <cstddef>
 
 namespace Commands {
-struct Timing {
-    unsigned offSeconds;
-    unsigned onSeconds;
+struct DutyCycle {
+    unsigned tenths; // 1..9 means 10%..90% LED-on time.
 };
 
-// Ignore ordinary ASCII spaces only; require exactly [1-5],[1-5].
+// Ignore ordinary ASCII spaces only; require exactly one digit [1-9].
 // Leave result unchanged on failure.
-bool parse(char const *text, std::size_t length, Timing &result);
+bool parse(char const *text, std::size_t length, DutyCycle &result);
 } // namespace Commands

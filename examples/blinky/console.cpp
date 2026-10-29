@@ -60,7 +60,7 @@ Q_STATE_DEF(ConsoleAO, active) {
         return Q_HANDLED();
     }
     if (e->sig == QP::Q_USER_SIG) {
-        session_.poll(port_, &Blinky::requestTiming);
+        session_.poll(port_, &Blinky::requestDutyCycle);
         return Q_HANDLED();
     }
     return super(&QP::QHsm::top);

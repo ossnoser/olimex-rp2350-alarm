@@ -42,9 +42,9 @@ bool Console::Session::consume(char byte, Accept accept) {
     if (byte == '\r' || byte == '\n') {
         skipLf_ = byte == '\r';
         append("\r\n");
-        Commands::Timing timing{};
-        if (!invalid_ && Commands::parse(line_, length_, timing)) {
-            accept(timing);
+        Commands::DutyCycle duty{};
+        if (!invalid_ && Commands::parse(line_, length_, duty)) {
+            accept(duty);
             append("Accepted\r\n");
         } else {
             append("Invalid\r\n");

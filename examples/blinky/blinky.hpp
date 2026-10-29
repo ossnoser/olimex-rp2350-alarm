@@ -5,5 +5,5 @@
 namespace Blinky {
 void start();
 // Post one immutable event ahead of any queued timeout; call from Console.
-void requestTiming(Commands::Timing timing);
+void requestDutyCycle(Commands::DutyCycle duty);
 } // namespace Blinky
