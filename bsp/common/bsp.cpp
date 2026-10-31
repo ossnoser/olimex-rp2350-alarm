@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "bsp.hpp"
-#include "pico/cyw43_arch.h"
+#include "board.hpp"
 #include "qsafe.h"
 #include "tusb.h"
 #include <algorithm>
@@ -21,17 +21,11 @@ void resetSession() {
 }
 
 void BSP::init() {
-    if (cyw43_arch_init() != 0) {
-        Q_onError("cyw43_init", 1);
-    }
+    Board::initLed();
     setLed(false);
     if (!tusb_init()) {
         Q_onError("usb_init", 1);
     }
-}
-
-void BSP::setLed(bool on) {
-    cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, on);
 }
 
 void BSP::setSerialWakeup(void (*notify)()) {

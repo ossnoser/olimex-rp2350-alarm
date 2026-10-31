@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 cmake_minimum_required(VERSION 3.20)
 
-set(PICO_BOARD pico2_w CACHE STRING "Supported board")
+set(PICO_BOARD pico2 CACHE STRING "Supported board: pico2 or pico2_w")
+set_property(CACHE PICO_BOARD PROPERTY STRINGS pico2 pico2_w)
 set(PICO_PLATFORM rp2350-arm-s CACHE STRING "Supported architecture")
 set(PICO_DEOPTIMIZED_DEBUG 1 CACHE BOOL "Minimize optimization in Debug builds")
-if(NOT PICO_BOARD STREQUAL "pico2_w" OR
+if((NOT PICO_BOARD STREQUAL "pico2" AND NOT PICO_BOARD STREQUAL "pico2_w") OR
    NOT PICO_PLATFORM STREQUAL "rp2350-arm-s")
-    message(FATAL_ERROR "Only pico2_w / rp2350-arm-s is currently supported.")
+    message(FATAL_ERROR "Only pico2 or pico2_w on rp2350-arm-s is supported.")
 endif()
 
 if(NOT PICO_SDK_PATH AND DEFINED ENV{PICO_SDK_PATH})
@@ -30,3 +31,4 @@ pico_sdk_init()
 add_subdirectory(framework/qpcpp)
 add_subdirectory(bsp)
 add_subdirectory(examples/blinky)
+add_subdirectory(examples/blinky-qm)

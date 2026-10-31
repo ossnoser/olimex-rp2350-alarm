@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "tusb.h"
+#include "board.hpp"
 #include "pico/unique_id.h"
 #include <cstddef>
 #include <cstdint>
@@ -36,7 +37,7 @@ extern "C" std::uint16_t const *tud_descriptor_string_cb(std::uint8_t index,
     char const *text;
     switch (index) {
         case 1: text = "Raspberry Pi"; break;
-        case 2: text = "Pico 2 W Blinky"; break;
+        case 2: text = BSP::Board::usbProductName(); break;
         case 3: text = serial; break;
         case 4: text = "Blinky Console"; break;
         default: return nullptr;

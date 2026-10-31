@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<model version="5.3.0" links="0">
+ <documentation>QM-modeled clone of the one-second duty-cycle Blinky example.
+Both active-object state machines are authoritative here. Regenerate the
+tracked C++ with tools/qm_codegen.py; never edit generated files manually.
+Handwritten parser/session, queue and transport adapters remain in src/.
+SPDX-License-Identifier: GPL-3.0-or-later</documentation>
+ <framework name="qpcpp"/>
+ <package name="AOs" stereotype="0x02">
+  <class name="BlinkyAO" superclass="qpcpp::QActive">
+   <documentation>Priority 2 LED active object. Commands update future phase durations;
+the armed one-shot timer is never restarted by a duty-cycle command.</documentation>
+   <attribute name="timeout_" type="QP::QTimeEvt" visibility="0x02" properties="0x00"/>
+   <attribute name="offTicks_" type="unsigned" visibility="0x02" properties="0x00"/>
+   <attribute name="onTicks_" type="unsigned" visibility="0x02" properties="0x00"/>
+   <operation name="BlinkyAO" type="" visibility="0x00" properties="0x00">
+    <code>: QActive(&amp;initial), timeout_(this, ModelEvents::TIMEOUT_SIG),
+  offTicks_(BSP::TICKS_PER_SECOND / 2U),
+  onTicks_(BSP::TICKS_PER_SECOND / 2U)
+
+static_assert(BSP::TICKS_PER_SECOND &gt;= 10U);
+static_assert(BSP::TICKS_PER_SECOND % 10U == 0U);</code>
+   </operation>
+   <statechart properties="0x02">
+    <initial target="../1/1">
+     <action brief="start off">static_cast&lt;void&gt;(e);</action>
+     <initial_glyph conn="24,4,5,1,0,24">
+      <action box="2,4,16,3"/>
+     </initial_glyph>
+    </initial>
+    <state name="running">
+     <documentation>Common parent handles duty-cycle commands in either LED phase.</documentation>
+     <tran trig="DUTY">
+      <action brief="update next phase; keep current timer">auto const tenths = Q_EVT_CAST(ModelEvents::DutyEvent)-&gt;duty.tenths;
+onTicks_ = tenths * (BSP::TICKS_PER_SECOND / 10U);
+offTicks_ = BSP::TICKS_PER_SECOND - onTicks_;</action>
+      <tran_glyph conn="42,20,3,-1,40">
+       <action box="0,-3,40,5"/>
+      </tran_glyph>
+     </tran>
+     <state name="off">
+      <entry>BSP::setLed(false);
+timeout_.armX(offTicks_);</entry>
+      <tran trig="TIMEOUT" target="../../2">
+       <tran_glyph conn="38,38,3,1,16">
+        <action box="2,-3,14,3"/>
+       </tran_glyph>
+      </tran>
+      <state_glyph node="10,28,28,24">
+       <entry box="1,3,26,8"/>
+      </state_glyph>
+     </state>
+     <state name="on">
+      <entry>BSP::setLed(true);
+timeout_.armX(onTicks_);</entry>
+      <tran trig="TIMEOUT" target="../../1">
+       <tran_glyph conn="54,47,3,1,-16">
+        <action box="-14,1,14,3"/>
+       </tran_glyph>
+      </tran>
+      <state_glyph node="54,28,28,24">
+       <entry box="1,3,26,8"/>
+      </state_glyph>
+     </state>
+     <state_glyph node="4,12,84,52"/>
+    </state>
+    <state_diagram size="94,70"/>
+   </statechart>
+  </class>
+  <class name="ConsoleAO" superclass="qpcpp::QActive">
+   <documentation>Priority 1 console active object. Polling handles bounded input/output;
+USB-service events drain transport work only and never parse input.</documentation>
+   <attribute name="session_" type="Console::Session" visibility="0x02" properties="0x00"/>
+   <attribute name="port_" type="UsbPort" visibility="0x02" properties="0x00"/>
+   <attribute name="poll_" type="QP::QTimeEvt" visibility="0x02" properties="0x00"/>
+   <operation name="ConsoleAO" type="" visibility="0x00" properties="0x00">
+    <code>: QActive(&amp;initial), poll_(this, ModelEvents::POLL_SIG)</code>
+   </operation>
+   <statechart properties="0x02">
+    <initial target="../1">
+     <action brief="arm 20 ms input poll">static_cast&lt;void&gt;(e);
+static_assert(BSP::TICKS_PER_SECOND % 50U == 0U);
+constexpr unsigned POLL_TICKS = BSP::TICKS_PER_SECOND / 50U;
+poll_.armX(POLL_TICKS, POLL_TICKS);</action>
+     <initial_glyph conn="18,4,5,1,0,12">
+      <action box="3,3,44,5"/>
+     </initial_glyph>
+    </initial>
+    <state name="active">
+     <tran trig="POLL">
+      <action brief="process bounded input/output; yield after one line">session_.poll(port_, &amp;Blinky::requestDutyCycle);</action>
+      <tran_glyph conn="10,28,3,-1,82">
+       <action box="0,-4,80,6"/>
+      </tran_glyph>
+     </tran>
+     <tran trig="USB_SERVICE">
+      <action brief="release coalescing flag; service USB only">ConsoleSupport::serviceUsb();</action>
+      <tran_glyph conn="10,42,3,-1,82">
+       <action box="0,-4,80,6"/>
+      </tran_glyph>
+     </tran>
+     <state_glyph node="6,16,96,36"/>
+    </state>
+    <state_diagram size="108,58"/>
+   </statechart>
+  </class>
+ </package>
+ <directory name="../generated">
+  <file name="blinky_ao.hpp">
+   <text>#pragma once
+#include "qpcpp.hpp"
+$declare${AOs::BlinkyAO}</text>
+  </file>
+  <file name="blinky_ao.cpp">
+   <text>#include "blinky_ao.hpp"
+#include "model_events.hpp"
+#include "bsp.hpp"
+using namespace ModelEvents;
+$define${AOs::BlinkyAO}</text>
+  </file>
+  <file name="console_ao.hpp">
+   <text>#pragma once
+#include "qpcpp.hpp"
+#include "console_session.hpp"
+#include "usb_port.hpp"
+$declare${AOs::ConsoleAO}</text>
+  </file>
+  <file name="console_ao.cpp">
+   <text>#include "console_ao.hpp"
+#include "model_events.hpp"
+#include "console_support.hpp"
+#include "blinky.hpp"
+#include "bsp.hpp"
+using namespace ModelEvents;
+$define${AOs::ConsoleAO}</text>
+  </file>
+ </directory>
+</model>

@@ -1,5 +1,28 @@
 # QP/C++ integration guide
 
+## Current board selection (TASK-0020)
+
+Both the handwritten and QM-generated examples support **Pico 2 (default)** and **Pico 2 W** on `rp2350-arm-s`. Official Pico 2 and Olimex RP2350-PICO2-HDR use the same `pico2` software target per the user-confirmed baseline. Application/model behavior is unchanged; the BSP selects direct GPIO LED support or CYW43 LED support and shares USB/tick/framework hooks under `bsp/common/`.
+
+Use separate `build/pico2/` and `build/pico2_w/` directories. Each builds both `qpcpp-blinky` and `qpcpp-blinky-qm`, producing four board/example combinations. New configurations default to Pico 2; existing wireless caches retain their selection. The USB product names are `Pico 2 Blinky` and `Pico 2 W Blinky`, respectively.
+
+**Status:** all four images build, original/clone host tests and freshness checks pass, and three targeted BSP tests pass. All four board/example combinations passed separately authorized post-refactor hardware smoke tests for USB identity/enumeration, console/LED behavior, invalid-input preservation, reconnect retention and reboot defaults. TASK-0020 is complete; timing was visually observed rather than instrument-measured. Earlier milestone hardware observations below predate this refactor. No automatic flashing or commit is authorized.
+
+See [board support and exact build/terminal commands](board-support.md) for current instructions and the artifact matrix; earlier single-board commands below preserve milestone context.
+
+## QM-modeled clone (TASK-0019)
+
+`examples/blinky-qm/` is an independent clone of the current duty-cycle example. Both QActive/QHsm state machines are defined in `model/blinky.qm` and generated using Intel-macOS QM 5.3.0, with QP/C++ still pinned at v8.1.5. Handwritten parser/session helpers are independent copies; BSP/framework integration is shared. The original `examples/blinky/` sources are unchanged.
+
+**Status:** both firmware targets build, all six clone host/generator checks and the original four host tests pass, and both diagrams were exported/inspected. The clone was subsequently flashed with explicit approval. The user confirmed prompt/echo, representative duty cycles, invalid-input preservation, editing, reconnect retention and reboot defaults. USB serial enumerated after flashing and a normal power cycle. This is hardware smoke validation, not instrumented timing or USB stress testing.
+
+The normal build uses generated C++ without requiring QM and produces separate images:
+
+- Original: `build/pico2_w/examples/blinky/qpcpp-blinky.uf2`
+- Modeled clone: `build/pico2_w/examples/blinky-qm/qpcpp-blinky-qm.uf2`
+
+The clone uses the same duty-cycle protocol documented below. To open both diagrams in QM, edit the model, regenerate/check source, run tests or select the separate build target, follow [the clone README](../../examples/blinky-qm/README.md). Generated C++ must not be edited manually. Flashing the clone requires explicit approval and replaces the running board image, not the original example sources.
+
 ## Current example: duty-cycle commands (TASK-0016)
 
 **Status:** completed with Debug firmware build, all four sanitizer-enabled host tests, and user-confirmed hardware smoke validation. Device checks passed for 10%/50%/90% settings, invalid-input preservation, terminal reconnect retaining 90%, reboot restoring 50%, and the prompt after USB re-enumeration. The device path changed after an upstream hub/adapter power cycle; always enumerate `/dev/cu.usbmodem*` rather than assuming a previous path. Timing was visually observed; all nine exact phase lengths were verified in host simulation, not instrumented on the board. This replaces the TASK-0015 off/on-pair protocol; earlier sections below are historical.

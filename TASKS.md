@@ -20,3 +20,7 @@ Sequential index of project tasks.
 | TASK-0014 | Blinky USB serial output | Approved / completed | [docs/tasks/TASK-0014-blinky-usb-serial.md](docs/tasks/TASK-0014-blinky-usb-serial.md) |
 | TASK-0015 | Interactive Blinky timing plan | Approved / completed | [docs/tasks/TASK-0015-interactive-blinky-timing-plan.md](docs/tasks/TASK-0015-interactive-blinky-timing-plan.md) |
 | TASK-0016 | Blinky duty-cycle commands | Approved / completed | [docs/tasks/TASK-0016-blinky-duty-cycle.md](docs/tasks/TASK-0016-blinky-duty-cycle.md) |
+| TASK-0017 | QM macOS Intel compatibility investigation | Approved research / completed | [docs/tasks/TASK-0017-qm-macos-intel-investigation.md](docs/tasks/TASK-0017-qm-macos-intel-investigation.md) |
+| TASK-0018 | QM 5.3.0 generated-code compatibility check | Approved compatibility check / completed | [docs/tasks/TASK-0018-qm-generated-code-compatibility.md](docs/tasks/TASK-0018-qm-generated-code-compatibility.md) |
+| TASK-0019 | QM-modeled Blinky clone | Approved / completed | [docs/tasks/TASK-0019-qm-blinky-clone.md](docs/tasks/TASK-0019-qm-blinky-clone.md) |
+| TASK-0020 | Pico 2 and Pico 2 W support | Approved / completed | [docs/tasks/TASK-0020-pico2-and-pico2-w-support.md](docs/tasks/TASK-0020-pico2-and-pico2-w-support.md) |
