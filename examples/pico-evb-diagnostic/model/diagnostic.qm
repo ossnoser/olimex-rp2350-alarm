@@ -1,0 +1,283 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<model version="5.3.0" links="0">
+ <documentation>PICO-EVB Rev. A four-relay one-shot sequence diagnostic. Copied heartbeat plus composed
+RelayTestHsm owned by BlinkyAO, and DiagnosticAO. Model is authoritative;
+regenerate tracked C++ with tools/qm_codegen.py. Manual testall/off only; never overlap energized outputs.
+SPDX-License-Identifier: GPL-3.0-or-later</documentation>
+ <framework name="qpcpp"/>
+ <package name="AOs" stereotype="0x02">
+  <class name="BlinkyAO" superclass="qpcpp::QActive">
+   <documentation>Priority 2 LED active object. Commands update future phase durations;
+the armed one-shot timer is never restarted by a duty-cycle command.</documentation>
+   <attribute name="timeout_" type="QP::QTimeEvt" visibility="0x02" properties="0x00"/>
+   <attribute name="offTicks_" type="unsigned" visibility="0x02" properties="0x00"/>
+   <attribute name="onTicks_" type="unsigned" visibility="0x02" properties="0x00"/>
+   <attribute name="relay_" type="RelayTestHsm" visibility="0x02" properties="0x00"/>
+   <attribute name="relayTimeout_" type="QP::QTimeEvt" visibility="0x02" properties="0x00"/>
+   <operation name="relayState" type="RelayTest::State" visibility="0x00" properties="0x00">
+    <code>return relay_.status();</code>
+   </operation>
+   <operation name="sequenceStep" type="unsigned" visibility="0x00" properties="0x00">
+    <code>return relay_.channel();</code>
+   </operation>
+   <operation name="armRelayTimer" type="void" visibility="0x00" properties="0x00">
+    <code>relayTimeout_.armX(BSP::TICKS_PER_SECOND);</code>
+   </operation>
+   <operation name="cancelRelayTimer" type="void" visibility="0x00" properties="0x00">
+    <code>static_cast&lt;void&gt;(relayTimeout_.disarm());</code>
+   </operation>
+   <operation name="BlinkyAO" type="" visibility="0x00" properties="0x00">
+    <code>: QActive(&amp;initial), timeout_(this, ModelEvents::TIMEOUT_SIG),
+  offTicks_(BSP::TICKS_PER_SECOND / 2U),
+  onTicks_(BSP::TICKS_PER_SECOND / 2U),
+  relayTimeout_(this, ModelEvents::RELAY_TIMEOUT_SIG)
+
+static_assert(BSP::TICKS_PER_SECOND &gt;= 10U);
+static_assert(BSP::TICKS_PER_SECOND % 10U == 0U);</code>
+   </operation>
+   <statechart properties="0x02">
+    <initial target="../1/5">
+     <action brief="initialize relay controller; start LED off">static_cast&lt;void&gt;(e);
+relay_.init(nullptr, 0U);</action>
+     <initial_glyph conn="24,4,5,1,0,24">
+      <action box="2,4,16,3"/>
+     </initial_glyph>
+    </initial>
+    <state name="running">
+     <documentation>Common parent handles duty-cycle commands in either LED phase.</documentation>
+     <tran trig="DUTY">
+      <action brief="update next phase; keep current timer">auto const tenths = Q_EVT_CAST(ModelEvents::DutyEvent)-&gt;duty.tenths;
+onTicks_ = tenths * (BSP::TICKS_PER_SECOND / 10U);
+offTicks_ = BSP::TICKS_PER_SECOND - onTicks_;</action>
+      <tran_glyph conn="42,20,3,-1,40">
+       <action box="0,-3,40,5"/>
+      </tran_glyph>
+     </tran>
+     <tran trig="TESTALL">
+      <action brief="validate fresh sequence; dispatch relay HSM">if (Blinky::takeSequenceRequest()) {
+    relay_.dispatch(e, 0U);
+} else {
+    static QP::QEvt const cancel{FORCE_OFF_SIG};
+    relay_.dispatch(&amp;cancel, 0U);
+}</action>
+      <tran_glyph conn="8,70,3,-1,78"><action box="0,-3,76,4"/></tran_glyph>
+     </tran>
+     <tran trig="FORCE_OFF">
+      <action brief="cancel pending; relay OFF and locked">static_cast&lt;void&gt;(Blinky::cancelPending());
+relay_.dispatch(e, 0U);</action>
+      <tran_glyph conn="8,80,3,-1,78"><action box="0,-3,76,4"/></tran_glyph>
+     </tran>
+     <tran trig="SESSION_LOST">
+      <action brief="cancel pending/active test; never re-arm">if (Blinky::cancelPending()) {
+    static QP::QEvt const cancel{FORCE_OFF_SIG};
+    relay_.dispatch(&amp;cancel, 0U);
+} else {
+    relay_.dispatch(e, 0U);
+}</action>
+      <tran_glyph conn="8,90,3,-1,78"><action box="0,-3,76,4"/></tran_glyph>
+     </tran>
+     <tran trig="RELAY_TIMEOUT">
+      <action brief="relay timeout independent of LED phase">relay_.dispatch(e, 0U);</action>
+      <tran_glyph conn="8,100,3,-1,78"><action box="0,-3,76,4"/></tran_glyph>
+     </tran>
+     <state name="off">
+      <entry>BSP::setLed(false);
+timeout_.armX(offTicks_);</entry>
+      <tran trig="TIMEOUT" target="../../6">
+       <tran_glyph conn="38,38,3,1,16">
+        <action box="2,-3,14,3"/>
+       </tran_glyph>
+      </tran>
+      <state_glyph node="10,28,28,24">
+       <entry box="1,3,26,8"/>
+      </state_glyph>
+     </state>
+     <state name="on">
+      <entry>BSP::setLed(true);
+timeout_.armX(onTicks_);</entry>
+      <tran trig="TIMEOUT" target="../../5">
+       <tran_glyph conn="54,47,3,1,-16">
+        <action box="-14,1,14,3"/>
+       </tran_glyph>
+      </tran>
+      <state_glyph node="54,28,28,24">
+       <entry box="1,3,26,8"/>
+      </state_glyph>
+     </state>
+     <state_glyph node="4,12,84,98"/>
+    </state>
+    <state_diagram size="94,116"/>
+   </statechart>
+  </class>
+  <class name="DiagnosticAO" superclass="qpcpp::QActive">
+   <documentation>Priority 1 diagnostic. SAMPLE reads inputs and performs bounded reporting;
+USB_SERVICE drains transport work without sampling or formatting.</documentation>
+   <attribute name="session_" type="Report::Session" visibility="0x02" properties="0x00"/>
+   <attribute name="port_" type="DiagnosticPort" visibility="0x02" properties="0x00"/>
+   <attribute name="sample_" type="QP::QTimeEvt" visibility="0x02" properties="0x00"/>
+   <operation name="DiagnosticAO" type="" visibility="0x00" properties="0x00">
+    <code>: QActive(&amp;initial), sample_(this, ModelEvents::SAMPLE_SIG)</code>
+   </operation>
+   <statechart properties="0x02">
+    <initial target="../1">
+     <action brief="arm 20 ms sample">static_cast&lt;void&gt;(e);
+static_assert(BSP::TICKS_PER_SECOND % 50U == 0U);
+constexpr unsigned SAMPLE_TICKS = BSP::TICKS_PER_SECOND / 50U;
+sample_.armX(SAMPLE_TICKS, SAMPLE_TICKS);</action>
+     <initial_glyph conn="18,4,5,1,0,12">
+      <action box="3,3,44,5"/>
+     </initial_glyph>
+    </initial>
+    <state name="active">
+     <tran trig="SAMPLE">
+      <action brief="sample inputs; bounded commands and reporting">if (!session_.poll(port_)) {
+    Q_onError("diagnostic_report", 1);
+}</action>
+      <tran_glyph conn="10,28,3,-1,82">
+       <action box="0,-4,80,6"/>
+      </tran_glyph>
+     </tran>
+     <tran trig="USB_SERVICE">
+      <action brief="release coalescing flag; service USB only">DiagnosticSupport::serviceUsb();</action>
+      <tran_glyph conn="10,42,3,-1,82">
+       <action box="0,-4,80,6"/>
+      </tran_glyph>
+     </tran>
+     <state_glyph node="6,16,96,36"/>
+    </state>
+    <state_diagram size="108,58"/>
+   </statechart>
+  </class>
+  <class name="RelayTestHsm" superclass="qpcpp::QHsm">
+   <documentation>Owned by BlinkyAO. One R1..R4 sequence per boot, 1s ON / 1s gap. GPIO commands are
+carrier BSP calls; no input linkage, re-arm command or dynamic allocation.</documentation>
+   <attribute name="controlState_" type="RelayTest::State" visibility="0x02" properties="0x00"/>
+   <attribute name="currentRelay_" type="unsigned" visibility="0x02" properties="0x00"/>
+   <operation name="channel" type="unsigned" visibility="0x00" properties="0x00">
+    <code>return currentRelay_;</code>
+   </operation>
+   <operation name="RelayTestHsm" type="" visibility="0x00" properties="0x00">
+    <code>: QHsm(&amp;initial), controlState_(RelayTest::State::Ready), currentRelay_(1U)</code>
+   </operation>
+   <operation name="status" type="RelayTest::State" visibility="0x00" properties="0x00">
+    <code>return controlState_;</code>
+   </operation>
+   <statechart properties="0x02">
+    <initial target="../1/1">
+     <action brief="boot ready; outputs OFF">static_cast&lt;void&gt;(e);</action>
+     <initial_glyph conn="20,4,5,1,0,24"><action box="3,3,30,4"/></initial_glyph>
+    </initial>
+    <state name="operational">
+     <tran trig="FORCE_OFF" target="../4">
+      <tran_glyph conn="114,16,5,1,0,12"><action box="-20,3,18,3"/></tran_glyph>
+     </tran>
+     <state name="ready">
+      <entry>Carrier::forceRelaysOff();
+controlState_ = RelayTest::State::Ready;
+currentRelay_ = 1U;</entry>
+      <tran trig="TESTALL" target="../../2">
+       <tran_glyph conn="36,39,3,1,14"><action box="0,-3,14,4"/></tran_glyph>
+      </tran>
+      <tran trig="SESSION_LOST">
+       <action brief="OFF">Carrier::forceRelaysOff();</action>
+       <tran_glyph conn="10,58,3,-1,24"><action box="0,-3,24,4"/></tran_glyph>
+      </tran>
+      <state_glyph node="8,28,28,38"><entry box="1,3,26,12"/></state_glyph>
+     </state>
+     <state name="pulsing">
+      <entry>controlState_ = RelayTest::State::Pulsing;
+if (!Carrier::activateRelay(
+        currentRelay_)) {
+    Q_onError("sequence_channel", 1);
+}
+RelayTest::armTimeout();</entry>
+      <exit>Carrier::forceRelaysOff();
+RelayTest::cancelTimeout();</exit>
+      <tran trig="RELAY_TIMEOUT">
+       <choice target="../../../3">
+        <guard brief="more relays">currentRelay_ &lt; 4U</guard>
+        <choice_glyph conn="90,38,5,1,0,81,-10"><action box="-12,45,14,4"/></choice_glyph>
+       </choice>
+       <choice target="../../../4">
+        <guard>else</guard>
+        <choice_glyph conn="90,38,3,1,8"><action box="0,-14,14,3"/></choice_glyph>
+       </choice>
+       <tran_glyph conn="80,38,3,-1,10"><action box="0,-3,22,4"/></tran_glyph>
+      </tran>
+      <tran trig="SESSION_LOST" target="../../4">
+       <tran_glyph conn="80,58,3,1,18"><action box="0,1,24,4"/></tran_glyph>
+      </tran>
+      <state_glyph node="50,28,30,50"><entry box="1,3,28,14"/><exit box="1,20,28,12"/></state_glyph>
+     </state>
+     <state name="gap">
+      <entry>Carrier::forceRelaysOff();
+controlState_ = RelayTest::State::Gap;
+RelayTest::armTimeout();</entry>
+      <exit>RelayTest::cancelTimeout();</exit>
+      <tran trig="RELAY_TIMEOUT" target="../../2">
+       <action brief="next relay">++currentRelay_;</action>
+       <tran_glyph conn="50,119,5,1,-8,-59,8"><action box="-28,-36,24,5"/></tran_glyph>
+      </tran>
+      <tran trig="SESSION_LOST" target="../../4">
+       <tran_glyph conn="80,128,3,1,18"><action box="0,1,24,4"/></tran_glyph>
+      </tran>
+      <state_glyph node="50,100,30,38"><entry box="1,3,28,14"/><exit box="1,20,28,8"/></state_glyph>
+     </state>
+     <state name="locked">
+      <entry>Carrier::forceRelaysOff();
+controlState_ = RelayTest::State::Locked;</entry>
+      <state_glyph node="98,28,32,110"><entry box="1,3,30,14"/></state_glyph>
+     </state>
+     <state_glyph node="4,16,132,130"/>
+    </state>
+    <state_diagram size="142,152"/>
+   </statechart>
+  </class>
+ </package>
+ <directory name="../generated">
+  <file name="blinky_ao.hpp">
+   <text>#pragma once
+#include "qpcpp.hpp"
+#include "relay_test_hsm.hpp"
+$declare${AOs::BlinkyAO}</text>
+  </file>
+  <file name="blinky_ao.cpp">
+   <text>#include "blinky_ao.hpp"
+#include "model_events.hpp"
+#include "bsp.hpp"
+#include "blinky.hpp"
+using namespace ModelEvents;
+$define${AOs::BlinkyAO}</text>
+  </file>
+  <file name="diagnostic_ao.hpp">
+   <text>#pragma once
+#include "qpcpp.hpp"
+#include "report_session.hpp"
+#include "diagnostic_port.hpp"
+$declare${AOs::DiagnosticAO}</text>
+  </file>
+  <file name="diagnostic_ao.cpp">
+   <text>#include "diagnostic_ao.hpp"
+#include "model_events.hpp"
+#include "diagnostic_support.hpp"
+#include "bsp.hpp"
+#include "qsafe.h"
+using namespace ModelEvents;
+$define${AOs::DiagnosticAO}</text>
+  </file>
+  <file name="relay_test_hsm.hpp">
+   <text>#pragma once
+#include "qpcpp.hpp"
+#include "relay_test.hpp"
+$declare${AOs::RelayTestHsm}</text>
+  </file>
+  <file name="relay_test_hsm.cpp">
+   <text>#include "relay_test_hsm.hpp"
+#include "model_events.hpp"
+#include "carrier.hpp"
+#include "qsafe.h"
+using namespace ModelEvents;
+$define${AOs::RelayTestHsm}</text>
+  </file>
+ </directory>
+</model>

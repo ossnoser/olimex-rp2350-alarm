@@ -1,0 +1,3 @@
+# QM 5.x GUI session state (not the authoritative model)
+model/.diagnostic
+model/*.qms

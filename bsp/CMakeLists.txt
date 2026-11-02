@@ -3,6 +3,7 @@
 add_library(bsp STATIC
     common/bsp.cpp
     common/qpcpp_hooks.cpp
+    common/runtime_options.cpp
     common/usb_descriptors.cpp
 )
 target_include_directories(bsp PUBLIC
@@ -29,3 +30,9 @@ endif()
 # The BSP owns TinyUSB. Do not let stdio initialize/service a second USB stack.
 pico_enable_stdio_usb(bsp 0)
 pico_enable_stdio_uart(bsp 0)
+
+if(PICO_BOARD STREQUAL "pico2")
+    add_library(pico_evb_rev_a STATIC carriers/pico_evb_rev_a/carrier.cpp)
+    target_include_directories(pico_evb_rev_a PUBLIC carriers/pico_evb_rev_a/include)
+    target_link_libraries(pico_evb_rev_a PUBLIC bsp hardware_gpio)
+endif()

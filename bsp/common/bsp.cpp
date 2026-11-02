@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "bsp.hpp"
 #include "board.hpp"
+#include "runtime_options.hpp"
 #include "qsafe.h"
 #include "tusb.h"
 #include <algorithm>
@@ -14,6 +15,7 @@ std::uint32_t sessionGeneration = 0;
 bool terminalDtr = false;
 
 void resetSession() {
+    static_cast<void>(BSP::Detail::invokeSerialLossAction());
     ++sessionGeneration;
     tud_cdc_read_flush();
     tud_cdc_write_clear();
@@ -33,7 +35,7 @@ void BSP::setSerialWakeup(void (*notify)()) {
 }
 
 void BSP::serialService() {
-    // Both poll and USB-service events run in Console's application context.
+    // Poll and USB-service events run in the receiving AO's application context.
     tud_task_ext(0, false);
     if (serialConnected()) {
         tud_cdc_write_flush(); // Submit a transfer; does not wait for the host.
@@ -84,6 +86,16 @@ extern "C" void tud_cdc_line_state_cb(std::uint8_t, bool dtr, bool) {
 extern "C" void tud_mount_cb() {
     terminalDtr = false;
     resetSession();
+}
+
+extern "C" void tud_suspend_cb(bool) {
+    // Default users retain their old session behavior. The relay-test opt-in
+    // clears outputs and invalidates even a suspend/resume between two polls.
+    if (BSP::Detail::invokeSerialLossAction()) {
+        ++sessionGeneration;
+        tud_cdc_read_flush();
+        tud_cdc_write_clear();
+    }
 }
 
 extern "C" void tud_umount_cb() {

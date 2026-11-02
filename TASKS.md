@@ -24,3 +24,10 @@ Sequential index of project tasks.
 | TASK-0018 | QM 5.3.0 generated-code compatibility check | Approved compatibility check / completed | [docs/tasks/TASK-0018-qm-generated-code-compatibility.md](docs/tasks/TASK-0018-qm-generated-code-compatibility.md) |
 | TASK-0019 | QM-modeled Blinky clone | Approved / completed | [docs/tasks/TASK-0019-qm-blinky-clone.md](docs/tasks/TASK-0019-qm-blinky-clone.md) |
 | TASK-0020 | Pico 2 and Pico 2 W support | Approved / completed | [docs/tasks/TASK-0020-pico2-and-pico2-w-support.md](docs/tasks/TASK-0020-pico2-and-pico2-w-support.md) |
+| TASK-0021 | PICO-EVB Rev. A integration investigation | Approved research/documentation / completed | [docs/tasks/TASK-0021-pico-evb-rev-a-investigation.md](docs/tasks/TASK-0021-pico-evb-rev-a-investigation.md) |
+| TASK-0022 | PICO-EVB Rev. A diagnostic firmware plan | Approved / completed (initial relay-off diagnostic) | [docs/tasks/TASK-0022-pico-evb-diagnostic-plan.md](docs/tasks/TASK-0022-pico-evb-diagnostic-plan.md) |
+| TASK-0023 | IN1 low-voltage input pilot | Approved / completed (nominal 5 V pilot) | [docs/tasks/TASK-0023-in1-low-voltage-input-test.md](docs/tasks/TASK-0023-in1-low-voltage-input-test.md) |
+| TASK-0024 | Remaining input validation | Completed (digital checks; analog margins unmeasured) | [docs/tasks/TASK-0024-remaining-input-validation.md](docs/tasks/TASK-0024-remaining-input-validation.md) |
+| TASK-0025 | Relay power research and single-relay test plan | Completed research / agreed one-shot plan | [docs/tasks/TASK-0025-relay-power-and-single-test-plan.md](docs/tasks/TASK-0025-relay-power-and-single-test-plan.md) |
+| TASK-0026 | REL1 one-shot implementation | Completed / limited REL1 smoke checks passed | [docs/tasks/TASK-0026-relay1-one-shot-implementation.md](docs/tasks/TASK-0026-relay1-one-shot-implementation.md) |
+| TASK-0027 | Four-relay one-shot sequence | Completed / 50 checks and unloaded four-relay sequence passed / cleanup confirmed | [docs/tasks/TASK-0027-four-relay-sequence.md](docs/tasks/TASK-0027-four-relay-sequence.md) |

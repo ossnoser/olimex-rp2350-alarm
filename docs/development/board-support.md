@@ -2,14 +2,14 @@
 
 ## Supported targets
 
-Both firmware examples support the following standalone boards:
+Both Blinky firmware examples support the following standalone boards:
 
 | Pico SDK board | LED implementation | USB product name |
 |---|---|---|
 | `pico2` (default) | GPIO via `PICO_DEFAULT_LED_PIN` (SDK default: GP25) | `Pico 2 Blinky` |
 | `pico2_w` | CYW43 LED via `pico_cyw43_arch_none`, without networking | `Pico 2 W Blinky` |
 
-Per the user-confirmed hardware baseline, official Raspberry Pi Pico 2 and Olimex RP2350-PICO2-HDR use the same `pico2` software target; pre-mounted headers do not require a separate build profile. PICO-EVB I/O and RS485 are not initialized or tested by this change.
+Per the user-confirmed hardware baseline, official Raspberry Pi Pico 2 and Olimex RP2350-PICO2-HDR use the same `pico2` software target; pre-mounted headers do not require a separate build profile. The Blinky examples do not initialize PICO-EVB I/O or RS485. A separate [Pico 2-only carrier diagnostic](../../examples/pico-evb-diagnostic/README.md) has its own independent QM model. Its original output-only build passed unloaded/input checks in TASK-0022..0024. TASK-0026 adds a REL1-only, one-second, once-per-boot manual test with automated validation only; the new command-capable build is not yet flashed/hardware-tested. Relay/load and transient behavior remain unvalidated.
 
 Only `PICO_PLATFORM=rp2350-arm-s` is supported. RISC-V and other boards are rejected at configure time. C++17, QV/core 0, the 100 Hz framework tick, QP/C++ v8.1.5, the duty-cycle protocol and the QM model are unchanged.
 
@@ -19,15 +19,17 @@ Only `PICO_PLATFORM=rp2350-arm-s` is supported. RISC-V and other boards are reje
 
 ```text
 bsp/
-  include/bsp.hpp          Unchanged application-facing interface
+  include/bsp.hpp          Backward-compatible API plus optional startup hooks
   common/
     board.hpp              Internal LED initialization/product-name contract
     bsp.cpp                Shared initialization and nonblocking USB CDC transport
     qpcpp_hooks.cpp         Shared timer, QV idle and fail-stop diagnostics
     tusb_config.h          Shared USB stack configuration
-    usb_descriptors.cpp    Shared descriptors, selected board product name
+    usb_descriptors.cpp    Shared descriptors, selected board/product name
+    runtime_options.*      Optional fault action and startup USB identity
   pico2/led.cpp             GPIO LED initialization/control and identity
   pico2_w/led.cpp           CYW43 LED initialization/control and identity
+  carriers/pico_evb_rev_a/  Diagnostic-only GPIO/input/silicon adapter
 ```
 
 The non-wireless build has no CYW43 sources/library dependency. The SDK may report wireless libraries as *available* during configuration; that does not mean they are linked. Pico 2 W alone links the CYW43 architecture support.
@@ -55,12 +57,13 @@ cmake --build build/pico2_w
 
 `-DPICO_BOARD=pico2` may be passed explicitly for the first command. The default does not override an existing CMake cache: an existing `build/pico2_w/` remains wireless. Do not switch board types inside a previously configured build directory.
 
-Each board build creates **two separate firmware images**, not one image with both applications:
+Pico 2 builds now create **three separate firmware images**; Pico 2 W retains **two**. These are separate applications, not one image containing all examples:
 
 | Board | Example | Artifact stem (append `.elf` or `.uf2`) |
 |---|---|---|
 | Pico 2 | Handwritten | `build/pico2/examples/blinky/qpcpp-blinky` |
 | Pico 2 | QM-modeled | `build/pico2/examples/blinky-qm/qpcpp-blinky-qm` |
+| Pico 2 + EVB Rev. A | Relay-off diagnostic | `build/pico2/examples/pico-evb-diagnostic/qpcpp-pico-evb-diagnostic` |
 | Pico 2 W | Handwritten | `build/pico2_w/examples/blinky/qpcpp-blinky` |
 | Pico 2 W | QM-modeled | `build/pico2_w/examples/blinky-qm/qpcpp-blinky-qm` |
 
@@ -116,5 +119,7 @@ For each board/example combination, check:
 3. Invalid `0`/`10`/`1,5` preserve the selected setting.
 4. Echo/editing and terminal reopen retain settings and show a fresh prompt.
 5. A normal USB power cycle restores 50% and re-enumerates USB.
+
+These five duty-cycle smoke checks apply to the **two Blinky examples**, not the output-only carrier diagnostic. Follow its separately gated README instead; it exposes no duty/relay commands. Carrier initialization and fault actions are linked/configured only by that diagnostic, which uses the USB product name `Pico 2 EVB Diagnostic`.
 
 Record each physical combination separately. Visual cadence observations are not instrument measurements. Build/host tests do not prove board pin wiring, USB enumeration or Arm interrupt behavior. TASK-0020 post-refactor hardware status: all four board/example combinations passed the recorded smoke checks.

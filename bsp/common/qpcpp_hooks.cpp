@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "bsp.hpp"
+#include "runtime_options.hpp"
 #include "qp_port.hpp"
 #include "qsafe.h"
 #include "hardware/sync.h"
@@ -44,6 +45,7 @@ extern "C" [[noreturn]] void Q_onError(char const * const module,
     faultSource = module;
     faultIdentifier = id;
     static_cast<void>(save_and_disable_interrupts());
+    BSP::Detail::invokeFaultAction();
     for (;;) {
         __asm volatile ("nop" ::: "memory");
     }
