@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <model version="5.3.0" links="0">
- <documentation>PICO-EVB Rev. A four-relay one-shot sequence diagnostic. Copied heartbeat plus composed
+ <documentation>PICO-EVB Rev. A individually addressed manual relay diagnostic. Copied heartbeat plus composed
 RelayTestHsm owned by BlinkyAO, and DiagnosticAO. Model is authoritative;
-regenerate tracked C++ with tools/qm_codegen.py. Manual testall/off only; never overlap energized outputs.
+regenerate tracked C++ with tools/qm_codegen.py. Manual on N / off N / off; no relay timer or automatic sequence. Never overlap energized outputs.
 SPDX-License-Identifier: GPL-3.0-or-later</documentation>
  <framework name="qpcpp"/>
  <package name="AOs" stereotype="0x02">
@@ -13,24 +13,16 @@ the armed one-shot timer is never restarted by a duty-cycle command.</documentat
    <attribute name="offTicks_" type="unsigned" visibility="0x02" properties="0x00"/>
    <attribute name="onTicks_" type="unsigned" visibility="0x02" properties="0x00"/>
    <attribute name="relay_" type="RelayTestHsm" visibility="0x02" properties="0x00"/>
-   <attribute name="relayTimeout_" type="QP::QTimeEvt" visibility="0x02" properties="0x00"/>
    <operation name="relayState" type="RelayTest::State" visibility="0x00" properties="0x00">
     <code>return relay_.status();</code>
    </operation>
-   <operation name="sequenceStep" type="unsigned" visibility="0x00" properties="0x00">
+   <operation name="activeRelay" type="unsigned" visibility="0x00" properties="0x00">
     <code>return relay_.channel();</code>
-   </operation>
-   <operation name="armRelayTimer" type="void" visibility="0x00" properties="0x00">
-    <code>relayTimeout_.armX(BSP::TICKS_PER_SECOND);</code>
-   </operation>
-   <operation name="cancelRelayTimer" type="void" visibility="0x00" properties="0x00">
-    <code>static_cast&lt;void&gt;(relayTimeout_.disarm());</code>
    </operation>
    <operation name="BlinkyAO" type="" visibility="0x00" properties="0x00">
     <code>: QActive(&amp;initial), timeout_(this, ModelEvents::TIMEOUT_SIG),
   offTicks_(BSP::TICKS_PER_SECOND / 2U),
-  onTicks_(BSP::TICKS_PER_SECOND / 2U),
-  relayTimeout_(this, ModelEvents::RELAY_TIMEOUT_SIG)
+  onTicks_(BSP::TICKS_PER_SECOND / 2U)
 
 static_assert(BSP::TICKS_PER_SECOND &gt;= 10U);
 static_assert(BSP::TICKS_PER_SECOND % 10U == 0U);</code>
@@ -53,31 +45,24 @@ offTicks_ = BSP::TICKS_PER_SECOND - onTicks_;</action>
        <action box="0,-3,40,5"/>
       </tran_glyph>
      </tran>
-     <tran trig="TESTALL">
-      <action brief="validate fresh sequence; dispatch relay HSM">if (Blinky::takeSequenceRequest()) {
+     <tran trig="RELAY_ON">
+      <action brief="validate pending channel/session; dispatch">if (Blinky::takeOnRequest(Q_EVT_CAST(ModelEvents::RelayEvent)-&gt;relay)) {
     relay_.dispatch(e, 0U);
-} else {
-    static QP::QEvt const cancel{FORCE_OFF_SIG};
-    relay_.dispatch(&amp;cancel, 0U);
 }</action>
       <tran_glyph conn="8,70,3,-1,78"><action box="0,-3,76,4"/></tran_glyph>
      </tran>
      <tran trig="FORCE_OFF">
-      <action brief="cancel pending; relay OFF and locked">static_cast&lt;void&gt;(Blinky::cancelPending());
+      <action brief="cancel pending; all OFF, reusable IDLE">static_cast&lt;void&gt;(Blinky::cancelPending());
 relay_.dispatch(e, 0U);</action>
       <tran_glyph conn="8,80,3,-1,78"><action box="0,-3,76,4"/></tran_glyph>
      </tran>
      <tran trig="SESSION_LOST">
-      <action brief="cancel pending/active test; never re-arm">if (Blinky::cancelPending()) {
-    static QP::QEvt const cancel{FORCE_OFF_SIG};
-    relay_.dispatch(&amp;cancel, 0U);
-} else {
-    relay_.dispatch(e, 0U);
-}</action>
+      <action brief="cancel pending; all OFF, no reconnect activation">static_cast&lt;void&gt;(Blinky::cancelPending());
+relay_.dispatch(e, 0U);</action>
       <tran_glyph conn="8,90,3,-1,78"><action box="0,-3,76,4"/></tran_glyph>
      </tran>
-     <tran trig="RELAY_TIMEOUT">
-      <action brief="relay timeout independent of LED phase">relay_.dispatch(e, 0U);</action>
+     <tran trig="RELAY_OFF">
+      <action brief="selected OFF; preserve unrelated relay">relay_.dispatch(e, 0U);</action>
       <tran_glyph conn="8,100,3,-1,78"><action box="0,-3,76,4"/></tran_glyph>
      </tran>
      <state name="off">
@@ -149,88 +134,59 @@ sample_.armX(SAMPLE_TICKS, SAMPLE_TICKS);</action>
    </statechart>
   </class>
   <class name="RelayTestHsm" superclass="qpcpp::QHsm">
-   <documentation>Owned by BlinkyAO. One R1..R4 sequence per boot, 1s ON / 1s gap. GPIO commands are
-carrier BSP calls; no input linkage, re-arm command or dynamic allocation.</documentation>
+   <documentation>Owned by BlinkyAO. One manually selected relay latched ON until OFF/loss.
+No automatic timeout, sequence, input linkage or within-boot lockout.</documentation>
    <attribute name="controlState_" type="RelayTest::State" visibility="0x02" properties="0x00"/>
    <attribute name="currentRelay_" type="unsigned" visibility="0x02" properties="0x00"/>
    <operation name="channel" type="unsigned" visibility="0x00" properties="0x00">
     <code>return currentRelay_;</code>
    </operation>
    <operation name="RelayTestHsm" type="" visibility="0x00" properties="0x00">
-    <code>: QHsm(&amp;initial), controlState_(RelayTest::State::Ready), currentRelay_(1U)</code>
+    <code>: QHsm(&amp;initial), controlState_(RelayTest::State::Idle), currentRelay_(0U)</code>
    </operation>
    <operation name="status" type="RelayTest::State" visibility="0x00" properties="0x00">
     <code>return controlState_;</code>
    </operation>
    <statechart properties="0x02">
-    <initial target="../1/1">
-     <action brief="boot ready; outputs OFF">static_cast&lt;void&gt;(e);</action>
+    <initial target="../1/2">
+     <action brief="boot IDLE; outputs OFF">static_cast&lt;void&gt;(e);</action>
      <initial_glyph conn="20,4,5,1,0,24"><action box="3,3,30,4"/></initial_glyph>
     </initial>
     <state name="operational">
-     <tran trig="FORCE_OFF" target="../4">
-      <tran_glyph conn="114,16,5,1,0,12"><action box="-20,3,18,3"/></tran_glyph>
+     <tran trig="FORCE_OFF" target="../2">
+      <tran_glyph conn="24,16,5,1,0,12"><action box="-20,3,18,3"/></tran_glyph>
      </tran>
-     <state name="ready">
+     <tran trig="SESSION_LOST" target="../2">
+      <tran_glyph conn="44,16,5,1,0,38,-4"><action box="2,3,30,3"/></tran_glyph>
+     </tran>
+     <state name="idle">
       <entry>Carrier::forceRelaysOff();
-controlState_ = RelayTest::State::Ready;
-currentRelay_ = 1U;</entry>
-      <tran trig="TESTALL" target="../../2">
-       <tran_glyph conn="36,39,3,1,14"><action box="0,-3,14,4"/></tran_glyph>
+controlState_ = RelayTest::State::Idle;
+currentRelay_ = 0U;</entry>
+      <tran trig="RELAY_ON" target="../../3">
+       <action brief="select N">currentRelay_ = Q_EVT_CAST(ModelEvents::RelayEvent)-&gt;relay;</action>
+       <tran_glyph conn="40,40,3,1,24"><action box="0,-4,24,4"/></tran_glyph>
       </tran>
-      <tran trig="SESSION_LOST">
-       <action brief="OFF">Carrier::forceRelaysOff();</action>
-       <tran_glyph conn="10,58,3,-1,24"><action box="0,-3,24,4"/></tran_glyph>
-      </tran>
-      <state_glyph node="8,28,28,38"><entry box="1,3,26,12"/></state_glyph>
+      <state_glyph node="8,28,32,50"><entry box="1,3,30,14"/></state_glyph>
      </state>
-     <state name="pulsing">
-      <entry>controlState_ = RelayTest::State::Pulsing;
-if (!Carrier::activateRelay(
-        currentRelay_)) {
-    Q_onError("sequence_channel", 1);
+     <state name="on">
+      <entry>if (!Carrier::activateRelay(currentRelay_)) {
+    Q_onError("relay_channel", 1);
 }
-RelayTest::armTimeout();</entry>
-      <exit>Carrier::forceRelaysOff();
-RelayTest::cancelTimeout();</exit>
-      <tran trig="RELAY_TIMEOUT">
-       <choice target="../../../3">
-        <guard brief="more relays">currentRelay_ &lt; 4U</guard>
-        <choice_glyph conn="90,38,5,1,0,81,-10"><action box="-12,45,14,4"/></choice_glyph>
+controlState_ = RelayTest::State::On;</entry>
+      <exit>Carrier::forceRelaysOff();</exit>
+      <tran trig="RELAY_OFF">
+       <choice target="../../../2">
+        <guard brief="matching relay">currentRelay_ == Q_EVT_CAST(ModelEvents::RelayEvent)-&gt;relay</guard>
+        <choice_glyph conn="52,60,3,1,-12"><action box="-10,3,20,4"/></choice_glyph>
        </choice>
-       <choice target="../../../4">
-        <guard>else</guard>
-        <choice_glyph conn="90,38,3,1,8"><action box="0,-14,14,3"/></choice_glyph>
-       </choice>
-       <tran_glyph conn="80,38,3,-1,10"><action box="0,-3,22,4"/></tran_glyph>
+       <tran_glyph conn="64,60,3,-1,-12"><action box="-20,-4,20,4"/></tran_glyph>
       </tran>
-      <tran trig="SESSION_LOST" target="../../4">
-       <tran_glyph conn="80,58,3,1,18"><action box="0,1,24,4"/></tran_glyph>
-      </tran>
-      <state_glyph node="50,28,30,50"><entry box="1,3,28,14"/><exit box="1,20,28,12"/></state_glyph>
+      <state_glyph node="64,28,60,50"><entry box="1,3,58,16"/><exit box="1,30,58,8"/></state_glyph>
      </state>
-     <state name="gap">
-      <entry>Carrier::forceRelaysOff();
-controlState_ = RelayTest::State::Gap;
-RelayTest::armTimeout();</entry>
-      <exit>RelayTest::cancelTimeout();</exit>
-      <tran trig="RELAY_TIMEOUT" target="../../2">
-       <action brief="next relay">++currentRelay_;</action>
-       <tran_glyph conn="50,119,5,1,-8,-59,8"><action box="-28,-36,24,5"/></tran_glyph>
-      </tran>
-      <tran trig="SESSION_LOST" target="../../4">
-       <tran_glyph conn="80,128,3,1,18"><action box="0,1,24,4"/></tran_glyph>
-      </tran>
-      <state_glyph node="50,100,30,38"><entry box="1,3,28,14"/><exit box="1,20,28,8"/></state_glyph>
-     </state>
-     <state name="locked">
-      <entry>Carrier::forceRelaysOff();
-controlState_ = RelayTest::State::Locked;</entry>
-      <state_glyph node="98,28,32,110"><entry box="1,3,30,14"/></state_glyph>
-     </state>
-     <state_glyph node="4,16,132,130"/>
+     <state_glyph node="4,16,126,70"/>
     </state>
-    <state_diagram size="142,152"/>
+    <state_diagram size="136,92"/>
    </statechart>
   </class>
  </package>

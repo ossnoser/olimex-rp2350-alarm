@@ -47,13 +47,12 @@ add_executable(relay_tests relay_tests.cpp
 target_include_directories(relay_tests PRIVATE "${GENERATED}" "${REPO}/bsp/include")
 target_compile_definitions(relay_tests PRIVATE QP_API_VERSION=815)
 target_link_libraries(relay_tests PRIVATE report_core qpcpp_host)
-foreach(mode sequence backpressure off_ready pending_off pending_loss stale loss_ready queued_gap_timeout_off)
+foreach(mode off_idle stale_channel flood)
     add_test(NAME evb_relay_${mode} COMMAND relay_tests ${mode})
 endforeach()
-# Abort in each of the four pulse stages and three OFF-gap stages.
-foreach(action off loss suspend)
-    foreach(stage RANGE 1 7)
-        add_test(NAME evb_relay_${action}_stage${stage} COMMAND relay_tests ${action}_s${stage})
+foreach(mode hold global loss suspend generation pending_same pending_other pending_global pending_loss pending_stale)
+    foreach(channel RANGE 1 4)
+        add_test(NAME evb_relay_${mode}_${channel} COMMAND relay_tests ${mode} ${channel})
     endforeach()
 endforeach()
 

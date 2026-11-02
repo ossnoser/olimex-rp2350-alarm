@@ -17,11 +17,17 @@ constexpr auto makeEvents(std::index_sequence<I...>) {
         ModelEvents::DutyEvent(static_cast<unsigned>(I + 1U))...};
 }
 constexpr auto dutyEvents = makeEvents(std::make_index_sequence<9>{});
-QP::QEvt const testEvent{ModelEvents::TESTALL_SIG};
+constexpr ModelEvents::RelayEvent onEvents[] = {
+    {ModelEvents::RELAY_ON_SIG, 1U}, {ModelEvents::RELAY_ON_SIG, 2U},
+    {ModelEvents::RELAY_ON_SIG, 3U}, {ModelEvents::RELAY_ON_SIG, 4U}};
+constexpr ModelEvents::RelayEvent selectedOffEvents[] = {
+    {ModelEvents::RELAY_OFF_SIG, 1U}, {ModelEvents::RELAY_OFF_SIG, 2U},
+    {ModelEvents::RELAY_OFF_SIG, 3U}, {ModelEvents::RELAY_OFF_SIG, 4U}};
 QP::QEvt const offEvent{ModelEvents::FORCE_OFF_SIG};
 QP::QEvt const lossEvent{ModelEvents::SESSION_LOST_SIG};
 bool pending = false;
 std::uint32_t requestGeneration = 0;
+unsigned requestedRelay = 0;
 
 BlinkyAO &instance() {
     // Construct only after framework initialization, as in the original.
@@ -35,17 +41,22 @@ void Blinky::start() {
     instance().start(2U, queue, 8U, nullptr, 0U);
 }
 
-bool Blinky::requestSequence() {
-    if (pending || instance().relayState() != RelayTest::State::Ready
-        || !BSP::serialConnected()) return false;
+bool Blinky::requestOn(unsigned relay) {
+    if (relay < 1U || relay > 4U || pending
+        || instance().relayState() != RelayTest::State::Idle
+        || Carrier::commandedRelays() != 0U || !BSP::serialConnected()) return false;
     requestGeneration = BSP::serialGeneration();
+    requestedRelay = relay;
     pending = true;
-    instance().post_(&testEvent, &testEvent);
+    instance().post_(&onEvents[relay - 1U], &onEvents[relay - 1U]);
     return true;
 }
-bool Blinky::takeSequenceRequest() {
-    bool const valid = pending && BSP::serialConnected()
-        && requestGeneration == BSP::serialGeneration();
+bool Blinky::takeOnRequest(unsigned relay) {
+    if (!pending || requestedRelay != relay) return false;
+    bool const valid = BSP::serialConnected()
+        && requestGeneration == BSP::serialGeneration()
+        && instance().relayState() == RelayTest::State::Idle
+        && Carrier::commandedRelays() == 0U;
     pending = false;
     return valid;
 }
@@ -54,18 +65,24 @@ bool Blinky::cancelPending() {
     pending = false;
     return wasPending;
 }
-void Blinky::stopTest() {
+void Blinky::stopRelay(unsigned relay) {
+    Q_REQUIRE_ID(2, relay >= 1U && relay <= 4U);
+    static_cast<void>(Carrier::deactivateRelay(relay));
+    if (pending && requestedRelay == relay) static_cast<void>(cancelPending());
+    instance().postLIFO(&selectedOffEvents[relay - 1U]);
+}
+void Blinky::stopAll() {
     Carrier::forceRelaysOff();
+    static_cast<void>(cancelPending());
     instance().postLIFO(&offEvent);
 }
 void Blinky::connectionLost() {
     Carrier::forceRelaysOff();
+    static_cast<void>(cancelPending());
     instance().postLIFO(&lossEvent);
 }
 RelayTest::State Blinky::relayState() { return instance().relayState(); }
-unsigned Blinky::sequenceStep() { return instance().sequenceStep(); }
-void RelayTest::armTimeout() { instance().armRelayTimer(); }
-void RelayTest::cancelTimeout() { instance().cancelRelayTimer(); }
+unsigned Blinky::activeRelay() { return instance().activeRelay(); }
 
 void Blinky::requestDutyCycle(Commands::DutyCycle duty) {
     Q_REQUIRE_ID(1, duty.tenths >= 1U && duty.tenths <= 9U);

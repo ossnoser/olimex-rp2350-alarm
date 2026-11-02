@@ -31,3 +31,4 @@ Sequential index of project tasks.
 | TASK-0025 | Relay power research and single-relay test plan | Completed research / agreed one-shot plan | [docs/tasks/TASK-0025-relay-power-and-single-test-plan.md](docs/tasks/TASK-0025-relay-power-and-single-test-plan.md) |
 | TASK-0026 | REL1 one-shot implementation | Completed / limited REL1 smoke checks passed | [docs/tasks/TASK-0026-relay1-one-shot-implementation.md](docs/tasks/TASK-0026-relay1-one-shot-implementation.md) |
 | TASK-0027 | Four-relay one-shot sequence | Completed / 50 checks and unloaded four-relay sequence passed / cleanup confirmed | [docs/tasks/TASK-0027-four-relay-sequence.md](docs/tasks/TASK-0027-four-relay-sequence.md) |
+| TASK-0028 | Individual manual relay commands | Completed / 64 checks and user-reported all-relay manual tests passed / cleanup confirmed | [docs/tasks/TASK-0028-individual-relay-commands.md](docs/tasks/TASK-0028-individual-relay-commands.md) |

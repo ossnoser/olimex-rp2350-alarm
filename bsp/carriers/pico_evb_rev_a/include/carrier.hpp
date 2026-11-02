@@ -13,6 +13,8 @@ void forceRelaysOff();
 // Checked logical relay number 1..4, NOT GPIO number. Clears all other outputs.
 // Caller enforces explicit-session/one-shot sequencing. Invalid numbers fail OFF.
 bool activateRelay(unsigned relay);
+// Only the selected logical relay is cleared. Invalid IDs make no changes.
+bool deactivateRelay(unsigned relay);
 std::uint8_t commandedRelays(); // Bits 0..3, NOT contact/coil feedback.
 void initInputs();
 Sample sample();

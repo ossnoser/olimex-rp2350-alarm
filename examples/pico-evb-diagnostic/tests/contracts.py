@@ -27,21 +27,24 @@ assert a.find('statechart/initial').get('target') == '../1/5'
 # handlers shift off/on to 5/6: explicitly check renumbering, not only XML text.
 running = a.find("statechart/state[@name='running']")
 items = [n for n in running if n.tag in ('tran', 'state', 'initial', 'choice')]
-assert [n.get('trig') for n in items[:5]] == ['DUTY','TESTALL','FORCE_OFF','SESSION_LOST','RELAY_TIMEOUT']
+assert [n.get('trig') for n in items[:5]] == ['DUTY','RELAY_ON','FORCE_OFF','SESSION_LOST','RELAY_OFF']
 assert [(n.tag,n.get('name')) for n in items[5:]] == [('state','off'),('state','on')]
 constructor = a.find("operation[@name='BlinkyAO']/code").text
 assert 'offTicks_(BSP::TICKS_PER_SECOND / 2U)' in constructor
 assert 'onTicks_(BSP::TICKS_PER_SECOND / 2U)' in constructor
 relay = model.find(".//class[@name='RelayTestHsm']/statechart/state")
-assert [s.get('name') for s in relay.findall('state')] == ['ready', 'pulsing', 'gap', 'locked']
-assert len(relay.findall("state/tran[@trig='TESTALL']")) == 1
-assert 'activateRelay' in relay.find("state[@name='pulsing']/entry").text
-for state in ('ready','gap','locked'):
-    assert 'activateRelay' not in relay.find(f"state[@name='{state}']/entry").text
-choices = relay.findall("state[@name='pulsing']/tran[@trig='RELAY_TIMEOUT']/choice")
-assert [c.get('target') for c in choices] == ['../../../3','../../../4']
-assert relay.find("state[@name='gap']/tran[@trig='RELAY_TIMEOUT']").get('target') == '../../2'
-assert not relay.find("state[@name='locked']").findall('tran')
+assert [s.get('name') for s in relay.findall('state')] == ['idle', 'on']
+assert relay.find("state[@name='idle']/tran[@trig='RELAY_ON']").get('target') == '../../3'
+assert 'activateRelay' in relay.find("state[@name='on']/entry").text
+assert 'activateRelay' not in relay.find("state[@name='idle']/entry").text
+choice = relay.find("state[@name='on']/tran[@trig='RELAY_OFF']/choice")
+assert choice.get('target') == '../../../2'
+assert 'currentRelay_ ==' in choice.find('guard').text
+assert 'RELAY_TIMEOUT' not in ET.tostring(model).decode()
+assert 'TESTALL' not in ET.tostring(model).decode()
+assert a.find("attribute[@name='relayTimeout_']") is None
+assert relay.find("tran[@trig='SESSION_LOST']").get('target') == '../2'
+assert relay.find("tran[@trig='FORCE_OFF']").get('target') == '../2'
 diag = model.find(".//class[@name='DiagnosticAO']/statechart")
 assert [s.get('name') for s in diag.findall('state')] == ['active']
 assert [t.get('trig') for t in diag.findall('state/tran')] == ['SAMPLE', 'USB_SERVICE']

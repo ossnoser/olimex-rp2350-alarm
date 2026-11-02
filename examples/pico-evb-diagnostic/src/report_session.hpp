@@ -16,10 +16,11 @@ public:
     virtual Carrier::Sample sample() = 0;
     virtual unsigned revision() = 0;
     virtual RelayTest::State relayState() = 0;
-    virtual unsigned sequenceStep() = 0;
+    virtual unsigned activeRelay() = 0;
     virtual std::uint8_t commandedRelays() = 0;
-    virtual bool requestSequence() = 0;
-    virtual void stopTest() = 0;
+    virtual bool requestOn(unsigned relay) = 0;
+    virtual void stopRelay(unsigned relay) = 0;
+    virtual void stopAll() = 0;
 protected:
     ~Port() = default;
 };
@@ -43,9 +44,9 @@ private:
     std::uint8_t previous_ = 0;
     Carrier::Sample latest_{};
     bool pending_ = false, controlPending_ = false;
-    RelayTest::State state_ = RelayTest::State::Ready;
+    RelayTest::State state_ = RelayTest::State::Idle;
     std::uint8_t commandMask_ = 0;
-    unsigned step_ = 1;
+    unsigned active_ = 0;
     std::uint64_t controlTime_ = 0;
     bool nextLine();
     void receive(Port &port);

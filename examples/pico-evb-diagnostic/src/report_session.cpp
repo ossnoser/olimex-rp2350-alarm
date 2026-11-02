@@ -8,13 +8,19 @@
 namespace {
 char const *name(RelayTest::State state) {
     switch (state) {
-        case RelayTest::State::Ready: return "READY";
-        case RelayTest::State::Pulsing: return "PULSING";
-        case RelayTest::State::Gap: return "GAP";
-        case RelayTest::State::Locked: return "LOCKED (power cycle required)";
+        case RelayTest::State::Idle: return "IDLE";
+        case RelayTest::State::On: return "ON";
     }
     return "UNKNOWN";
 }
+constexpr char const *onReplies[] = {
+    "ON requested: REL1 (manual OFF; no timeout).\r\n",
+    "ON requested: REL2 (manual OFF; no timeout).\r\n",
+    "ON requested: REL3 (manual OFF; no timeout).\r\n",
+    "ON requested: REL4 (manual OFF; no timeout).\r\n"};
+constexpr char const *offReplies[] = {
+    "OFF requested: REL1 only.\r\n", "OFF requested: REL2 only.\r\n",
+    "OFF requested: REL3 only.\r\n", "OFF requested: REL4 only.\r\n"};
 }
 void Report::Session::resetOutput() {
     length_ = sent_ = commandLength_ = 0;
@@ -31,13 +37,22 @@ void Report::Session::receive(Port &port) {
             skipLf_ = byte == '\r';
             command_[commandLength_] = '\0';
             if (!invalid_ && std::strcmp(command_, "off") == 0) {
-                port.stopTest(); // Never conditional on TX space or reply delivery.
-                reply_ = "OFF requested; sequence locked until power cycle.\r\n";
-            } else if (!invalid_ && std::strcmp(command_, "testall") == 0) {
-                reply_ = port.requestSequence() ? "testall requested (R1..R4, once per boot).\r\n"
-                                               : "testall rejected: not READY or request pending.\r\n";
+                port.stopAll(); // Never conditional on TX space or reply delivery.
+                reply_ = "All OFF requested; pending ON cancelled.\r\n";
+            } else if (!invalid_ && commandLength_ == 4U
+                       && std::memcmp(command_, "on ", 3) == 0
+                       && command_[3] >= '1' && command_[3] <= '4') {
+                unsigned const relay = static_cast<unsigned>(command_[3] - '0');
+                reply_ = port.requestOn(relay) ? onReplies[relay - 1U]
+                    : "ON rejected: busy/pending or no active session.\r\n";
+            } else if (!invalid_ && commandLength_ == 5U
+                       && std::memcmp(command_, "off ", 4) == 0
+                       && command_[4] >= '1' && command_[4] <= '4') {
+                unsigned const relay = static_cast<unsigned>(command_[4] - '0');
+                port.stopRelay(relay);
+                reply_ = offReplies[relay - 1U];
             } else {
-                reply_ = "Invalid: use testall or off.\r\n";
+                reply_ = "Invalid: use on N / off N (N=1..4), or off.\r\n";
             }
             commandLength_ = 0; invalid_ = false;
             break; // At most one command per poll, independent of TX backpressure.
@@ -74,14 +89,14 @@ bool Report::Session::nextLine() {
             length = std::snprintf(tx_, sizeof tx_, "Inputs: HIGH=inactive, LOW=active; raw/unfiltered\r\n");
             break;
         case 5:
-            length = std::snprintf(tx_, sizeof tx_, "Commands: testall (R1..R4, once/boot); off (cancel+lock).\r\n");
+            length = std::snprintf(tx_, sizeof tx_, "Commands: on N / off N (N=1..4); off (all). No timeout.\r\n");
             break;
         default:
             if (controlPending_) {
                 kind_ = Line::Control;
                 length = std::snprintf(tx_, sizeof tx_,
-                    "t=%" PRIu64 "ms SEQ=%s STEP=%u CMD=%s,%s,%s,%s (no feedback)\r\n",
-                    controlTime_, name(state_), step_,
+                    "t=%" PRIu64 "ms CTRL=%s RELAY=%u CMD=%s,%s,%s,%s (no feedback)\r\n",
+                    controlTime_, name(state_), active_,
                     (commandMask_ & 1U) ? "ON" : "OFF", (commandMask_ & 2U) ? "ON" : "OFF",
                     (commandMask_ & 4U) ? "ON" : "OFF", (commandMask_ & 8U) ? "ON" : "OFF");
                 controlPending_ = false;
@@ -113,7 +128,7 @@ bool Report::Session::poll(Port &port) {
     auto const connection = port.connection();
     auto const state = port.relayState();
     auto const commands = port.commandedRelays();
-    auto const step = port.sequenceStep();
+    auto const active = port.activeRelay();
     if (!connection.connected) {
         connected_ = false;
         generation_ = connection.generation;
@@ -131,11 +146,11 @@ bool Report::Session::poll(Port &port) {
         controlTime_ = sample.milliseconds;
     } else {
         if (previous_ != sample.highMask) { pending_ = true; latest_ = sample; }
-        if (state_ != state || commandMask_ != commands || step_ != step) {
+        if (state_ != state || commandMask_ != commands || active_ != active) {
             controlPending_ = true; controlTime_ = sample.milliseconds;
         }
     }
-    state_ = state; commandMask_ = commands; step_ = step; previous_ = sample.highMask;
+    state_ = state; commandMask_ = commands; active_ = active; previous_ = sample.highMask;
     receive(port);
     // Replace only fully unsent lines; complete partial lines intact.
     if (sent_ == 0U && ((kind_ == Line::Input && pending_)

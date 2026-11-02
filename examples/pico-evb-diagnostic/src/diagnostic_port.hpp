@@ -17,8 +17,9 @@ public:
     Carrier::Sample sample() override { return Carrier::sample(); }
     unsigned revision() override { return Carrier::siliconRevision(); }
     RelayTest::State relayState() override { return Blinky::relayState(); }
-    unsigned sequenceStep() override { return Blinky::sequenceStep(); }
+    unsigned activeRelay() override { return Blinky::activeRelay(); }
     std::uint8_t commandedRelays() override { return Carrier::commandedRelays(); }
-    bool requestSequence() override { return Blinky::requestSequence(); }
-    void stopTest() override { Blinky::stopTest(); }
+    bool requestOn(unsigned relay) override { return Blinky::requestOn(relay); }
+    void stopRelay(unsigned relay) override { Blinky::stopRelay(relay); }
+    void stopAll() override { Blinky::stopAll(); }
 };

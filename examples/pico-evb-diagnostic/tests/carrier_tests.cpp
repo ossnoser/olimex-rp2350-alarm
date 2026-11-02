@@ -42,7 +42,8 @@ void gpio_set_dir(unsigned pin, bool out) {
 }
 void gpio_disable_pulls(unsigned pin) { calls.push_back("pulls_off" + std::to_string(pin)); }
 void gpio_clr_mask(std::uint32_t mask) {
-    CHECK(mask == RELAYS); calls.push_back("clear_relays"); output &= ~mask;
+    CHECK(mask != 0 && (mask & ~RELAYS) == 0);
+    calls.push_back(mask == RELAYS ? "clear_relays" : "clear_selected"); output &= ~mask;
 }
 std::uint32_t gpio_get_all() { return levels; }
 std::uint64_t time_us_64() { return 1234567; }
@@ -105,6 +106,25 @@ int main() {
         CHECK((output & RELAYS) == (1U << (relay + 9U)));
         CHECK(Carrier::commandedRelays() == (1U << (relay - 1U)));
         CHECK(calls == std::vector<std::string>({"clear_relays", "high" + std::to_string(relay + 9U)}));
+    }
+    // Selected OFF must preserve every unrelated output/command bit.
+    for (unsigned active = 1; active <= 4; ++active) {
+        CHECK(Carrier::activateRelay(active));
+        auto const before = output;
+        for (unsigned relay = 1; relay <= 4; ++relay) {
+            if (relay == active) continue;
+            CHECK(Carrier::deactivateRelay(relay));
+            CHECK(output == before && Carrier::commandedRelays() == (1U << (active - 1U)));
+        }
+        for (unsigned invalid : {0U, 5U, 100U}) {
+            calls.clear(); CHECK(!Carrier::deactivateRelay(invalid));
+            CHECK(calls.empty() && output == before);
+            CHECK(Carrier::commandedRelays() == (1U << (active - 1U)));
+        }
+        calls.clear(); CHECK(Carrier::deactivateRelay(active));
+        CHECK(output == ~RELAYS && Carrier::commandedRelays() == 0);
+        CHECK(calls == std::vector<std::string>{"clear_selected"});
+        CHECK(Carrier::deactivateRelay(active)); // Already OFF is harmless.
     }
     for (unsigned invalid : {0U, 5U, 100U}) {
         calls.clear();

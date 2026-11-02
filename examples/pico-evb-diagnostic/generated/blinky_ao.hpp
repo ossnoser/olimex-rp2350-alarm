@@ -40,13 +40,10 @@ private:
     unsigned offTicks_;
     unsigned onTicks_;
     RelayTestHsm relay_;
-    QP::QTimeEvt relayTimeout_;
 
 public:
     RelayTest::State relayState();
-    unsigned sequenceStep();
-    void armRelayTimer();
-    void cancelRelayTimer();
+    unsigned activeRelay();
     BlinkyAO();
 
 protected:

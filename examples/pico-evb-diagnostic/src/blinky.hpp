@@ -7,13 +7,14 @@ namespace Blinky {
 void start();
 // Application context only (QV/core 0). One static pending request, tagged with
 // its USB generation. Model dispatch consumes/validates it before actuation.
-bool requestSequence();
-bool takeSequenceRequest();
+bool requestOn(unsigned relay);
+bool takeOnRequest(unsigned relay);
 bool cancelPending();
-void stopTest();
+void stopRelay(unsigned relay);
+void stopAll();
 void connectionLost();
 RelayTest::State relayState();
-unsigned sequenceStep();
+unsigned activeRelay();
 // Retained with the copied HSM for future extensions; unused by this diagnostic.
 void requestDutyCycle(Commands::DutyCycle duty);
 } // namespace Blinky

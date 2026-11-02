@@ -9,7 +9,7 @@ Both Blinky firmware examples support the following standalone boards:
 | `pico2` (default) | GPIO via `PICO_DEFAULT_LED_PIN` (SDK default: GP25) | `Pico 2 Blinky` |
 | `pico2_w` | CYW43 LED via `pico_cyw43_arch_none`, without networking | `Pico 2 W Blinky` |
 
-Per the user-confirmed hardware baseline, official Raspberry Pi Pico 2 and Olimex RP2350-PICO2-HDR use the same `pico2` software target; pre-mounted headers do not require a separate build profile. The Blinky examples do not initialize PICO-EVB I/O or RS485. A separate [Pico 2-only carrier diagnostic](../../examples/pico-evb-diagnostic/README.md) has its own independent QM model. Its original output-only build passed unloaded/input checks in TASK-0022..0024. TASK-0026 adds a REL1-only, one-second, once-per-boot manual test with automated validation only; the new command-capable build is not yet flashed/hardware-tested. Relay/load and transient behavior remain unvalidated.
+Per the user-confirmed hardware baseline, official Raspberry Pi Pico 2 and Olimex RP2350-PICO2-HDR use the same `pico2` software target; pre-mounted headers do not require a separate build profile. The Blinky examples do not initialize PICO-EVB I/O or RS485. A separate [Pico 2-only carrier diagnostic](../../examples/pico-evb-diagnostic/README.md) has its own independent QM model. Its original output-only build passed unloaded/input checks in TASK-0022..0024. TASK-0026/0027's REL1-only/four-relay sequence images passed limited approved unloaded observations. Current TASK-0028 replaces the sequence with individual latched `on N`/`off N` and global `off`, maximum one relay ON, no timeout, detected session-loss OFF and no lockout. This new manual-control image passed automated checks and approved flash/startup verification, and one approved manual REL1 ON/selected-OFF console trace; the user confirmed the physical REL1 ON-until-OFF behavior and other indicators OFF. The user also reported all-four manual control/busy rejection/global OFF successful. Unpowered/unwired cleanup was user-confirmed; no full physical failure-path/contact/current/thermal qualification is implied. Relay/load and transient behavior remain unvalidated.
 
 Only `PICO_PLATFORM=rp2350-arm-s` is supported. RISC-V and other boards are rejected at configure time. C++17, QV/core 0, the 100 Hz framework tick, QP/C++ v8.1.5, the duty-cycle protocol and the QM model are unchanged.
 
@@ -26,7 +26,7 @@ bsp/
     qpcpp_hooks.cpp         Shared timer, QV idle and fail-stop diagnostics
     tusb_config.h          Shared USB stack configuration
     usb_descriptors.cpp    Shared descriptors, selected board/product name
-    runtime_options.*      Optional fault action and startup USB identity
+    runtime_options.*      Optional fault/session-loss actions and startup USB identity
   pico2/led.cpp             GPIO LED initialization/control and identity
   pico2_w/led.cpp           CYW43 LED initialization/control and identity
   carriers/pico_evb_rev_a/  Diagnostic-only GPIO/input/silicon adapter
@@ -63,7 +63,7 @@ Pico 2 builds now create **three separate firmware images**; Pico 2 W retains **
 |---|---|---|
 | Pico 2 | Handwritten | `build/pico2/examples/blinky/qpcpp-blinky` |
 | Pico 2 | QM-modeled | `build/pico2/examples/blinky-qm/qpcpp-blinky-qm` |
-| Pico 2 + EVB Rev. A | Relay-off diagnostic | `build/pico2/examples/pico-evb-diagnostic/qpcpp-pico-evb-diagnostic` |
+| Pico 2 + EVB Rev. A | Manual relay/input diagnostic | `build/pico2/examples/pico-evb-diagnostic/qpcpp-pico-evb-diagnostic` |
 | Pico 2 W | Handwritten | `build/pico2_w/examples/blinky/qpcpp-blinky` |
 | Pico 2 W | QM-modeled | `build/pico2_w/examples/blinky-qm/qpcpp-blinky-qm` |
 

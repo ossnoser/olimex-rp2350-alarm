@@ -22,7 +22,7 @@ for board in ('pico2', 'pico2_w'):
         assert elf.with_suffix('.uf2').stat().st_size > 0
         symbols = subprocess.check_output(['arm-none-eabi-nm', '-C', str(elf)], text=True)
         for function in ('Carrier::initRelaysOff()', 'Carrier::forceRelaysOff()', 'Carrier::sample()',
-                         'Carrier::activateRelay(unsigned int)', 'Carrier::commandedRelays()'):
+                         'Carrier::activateRelay(unsigned int)', 'Carrier::deactivateRelay(unsigned int)', 'Carrier::commandedRelays()'):
             assert (function in symbols) == diagnostic, (board, example, function)
         assert (b'Pico 2 EVB Diagnostic\0' in elf.read_bytes()) == diagnostic
         config = re.search(r'^([0-9a-f]+)\s+r\s+\(anonymous namespace\)::CONFIG$', symbols, re.M)

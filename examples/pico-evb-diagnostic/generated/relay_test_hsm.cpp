@@ -51,7 +51,7 @@ unsigned RelayTestHsm::channel() {
 
 //${AOs::RelayTestHsm::RelayTestHsm} .........................................
 RelayTestHsm::RelayTestHsm()
-: QHsm(&initial), controlState_(RelayTest::State::Ready), currentRelay_(1U)
+: QHsm(&initial), controlState_(RelayTest::State::Idle), currentRelay_(0U)
 {}
 
 //${AOs::RelayTestHsm::status} ...............................................
@@ -65,12 +65,10 @@ Q_STATE_DEF(RelayTestHsm, initial) {
     static_cast<void>(e);
 
     QS_FUN_DICTIONARY(&RelayTestHsm::operational);
-    QS_FUN_DICTIONARY(&RelayTestHsm::ready);
-    QS_FUN_DICTIONARY(&RelayTestHsm::pulsing);
-    QS_FUN_DICTIONARY(&RelayTestHsm::gap);
-    QS_FUN_DICTIONARY(&RelayTestHsm::locked);
+    QS_FUN_DICTIONARY(&RelayTestHsm::idle);
+    QS_FUN_DICTIONARY(&RelayTestHsm::on);
 
-    return tran(&ready);
+    return tran(&idle);
 }
 
 //${AOs::RelayTestHsm::SM::operational} ......................................
@@ -79,7 +77,12 @@ Q_STATE_DEF(RelayTestHsm, operational) {
     switch (e->sig) {
         //${AOs::RelayTestHsm::SM::operational::FORCE_OFF}
         case FORCE_OFF_SIG: {
-            status_ = tran(&locked);
+            status_ = tran(&idle);
+            break;
+        }
+        //${AOs::RelayTestHsm::SM::operational::SESSION_LOST}
+        case SESSION_LOST_SIG: {
+            status_ = tran(&idle);
             break;
         }
         default: {
@@ -90,27 +93,22 @@ Q_STATE_DEF(RelayTestHsm, operational) {
     return status_;
 }
 
-//${AOs::RelayTestHsm::SM::operational::ready} ...............................
-Q_STATE_DEF(RelayTestHsm, ready) {
+//${AOs::RelayTestHsm::SM::operational::idle} ................................
+Q_STATE_DEF(RelayTestHsm, idle) {
     QP::QState status_;
     switch (e->sig) {
-        //${AOs::RelayTestHsm::SM::operational::ready}
+        //${AOs::RelayTestHsm::SM::operational::idle}
         case Q_ENTRY_SIG: {
             Carrier::forceRelaysOff();
-            controlState_ = RelayTest::State::Ready;
-            currentRelay_ = 1U;
+            controlState_ = RelayTest::State::Idle;
+            currentRelay_ = 0U;
             status_ = Q_RET_HANDLED;
             break;
         }
-        //${AOs::RelayTestHsm::SM::operational::ready::TESTALL}
-        case TESTALL_SIG: {
-            status_ = tran(&pulsing);
-            break;
-        }
-        //${AOs::RelayTestHsm::SM::operational::ready::SESSION_LOST}
-        case SESSION_LOST_SIG: {
-            Carrier::forceRelaysOff();
-            status_ = Q_RET_HANDLED;
+        //${AOs::RelayTestHsm::SM::operational::idle::RELAY_ON}
+        case RELAY_ON_SIG: {
+            currentRelay_ = Q_EVT_CAST(ModelEvents::RelayEvent)->relay;
+            status_ = tran(&on);
             break;
         }
         default: {
@@ -121,99 +119,34 @@ Q_STATE_DEF(RelayTestHsm, ready) {
     return status_;
 }
 
-//${AOs::RelayTestHsm::SM::operational::pulsing} .............................
-Q_STATE_DEF(RelayTestHsm, pulsing) {
+//${AOs::RelayTestHsm::SM::operational::on} ..................................
+Q_STATE_DEF(RelayTestHsm, on) {
     QP::QState status_;
     switch (e->sig) {
-        //${AOs::RelayTestHsm::SM::operational::pulsing}
+        //${AOs::RelayTestHsm::SM::operational::on}
         case Q_ENTRY_SIG: {
-            controlState_ = RelayTest::State::Pulsing;
-            if (!Carrier::activateRelay(
-                    currentRelay_)) {
-                Q_onError("sequence_channel", 1);
+            if (!Carrier::activateRelay(currentRelay_)) {
+                Q_onError("relay_channel", 1);
             }
-            RelayTest::armTimeout();
+            controlState_ = RelayTest::State::On;
             status_ = Q_RET_HANDLED;
             break;
         }
-        //${AOs::RelayTestHsm::SM::operational::pulsing}
+        //${AOs::RelayTestHsm::SM::operational::on}
         case Q_EXIT_SIG: {
             Carrier::forceRelaysOff();
-            RelayTest::cancelTimeout();
             status_ = Q_RET_HANDLED;
             break;
         }
-        //${AOs::RelayTestHsm::SM::operational::pulsing::RELAY_TIMEOUT}
-        case RELAY_TIMEOUT_SIG: {
-            //${AOs::RelayTestHsm::SM::operational::pulsing::RELAY_TIMEOUT::[morerelays]}
-            if (currentRelay_ < 4U) {
-                status_ = tran(&gap);
+        //${AOs::RelayTestHsm::SM::operational::on::RELAY_OFF}
+        case RELAY_OFF_SIG: {
+            //${AOs::RelayTestHsm::SM::operational::on::RELAY_OFF::[matchingrelay]}
+            if (currentRelay_ == Q_EVT_CAST(ModelEvents::RelayEvent)->relay) {
+                status_ = tran(&idle);
             }
-            //${AOs::RelayTestHsm::SM::operational::pulsing::RELAY_TIMEOUT::[else]}
             else {
-                status_ = tran(&locked);
+                status_ = Q_RET_UNHANDLED;
             }
-            break;
-        }
-        //${AOs::RelayTestHsm::SM::operational::pulsing::SESSION_LOST}
-        case SESSION_LOST_SIG: {
-            status_ = tran(&locked);
-            break;
-        }
-        default: {
-            status_ = super(&operational);
-            break;
-        }
-    }
-    return status_;
-}
-
-//${AOs::RelayTestHsm::SM::operational::gap} .................................
-Q_STATE_DEF(RelayTestHsm, gap) {
-    QP::QState status_;
-    switch (e->sig) {
-        //${AOs::RelayTestHsm::SM::operational::gap}
-        case Q_ENTRY_SIG: {
-            Carrier::forceRelaysOff();
-            controlState_ = RelayTest::State::Gap;
-            RelayTest::armTimeout();
-            status_ = Q_RET_HANDLED;
-            break;
-        }
-        //${AOs::RelayTestHsm::SM::operational::gap}
-        case Q_EXIT_SIG: {
-            RelayTest::cancelTimeout();
-            status_ = Q_RET_HANDLED;
-            break;
-        }
-        //${AOs::RelayTestHsm::SM::operational::gap::RELAY_TIMEOUT}
-        case RELAY_TIMEOUT_SIG: {
-            ++currentRelay_;
-            status_ = tran(&pulsing);
-            break;
-        }
-        //${AOs::RelayTestHsm::SM::operational::gap::SESSION_LOST}
-        case SESSION_LOST_SIG: {
-            status_ = tran(&locked);
-            break;
-        }
-        default: {
-            status_ = super(&operational);
-            break;
-        }
-    }
-    return status_;
-}
-
-//${AOs::RelayTestHsm::SM::operational::locked} ..............................
-Q_STATE_DEF(RelayTestHsm, locked) {
-    QP::QState status_;
-    switch (e->sig) {
-        //${AOs::RelayTestHsm::SM::operational::locked}
-        case Q_ENTRY_SIG: {
-            Carrier::forceRelaysOff();
-            controlState_ = RelayTest::State::Locked;
-            status_ = Q_RET_HANDLED;
             break;
         }
         default: {

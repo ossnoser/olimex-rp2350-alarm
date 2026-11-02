@@ -49,27 +49,16 @@ RelayTest::State BlinkyAO::relayState() {
     return relay_.status();
 }
 
-//${AOs::BlinkyAO::sequenceStep} .............................................
-unsigned BlinkyAO::sequenceStep() {
+//${AOs::BlinkyAO::activeRelay} ..............................................
+unsigned BlinkyAO::activeRelay() {
     return relay_.channel();
-}
-
-//${AOs::BlinkyAO::armRelayTimer} ............................................
-void BlinkyAO::armRelayTimer() {
-    relayTimeout_.armX(BSP::TICKS_PER_SECOND);
-}
-
-//${AOs::BlinkyAO::cancelRelayTimer} .........................................
-void BlinkyAO::cancelRelayTimer() {
-    static_cast<void>(relayTimeout_.disarm());
 }
 
 //${AOs::BlinkyAO::BlinkyAO} .................................................
 BlinkyAO::BlinkyAO()
 : QActive(&initial), timeout_(this, ModelEvents::TIMEOUT_SIG),
   offTicks_(BSP::TICKS_PER_SECOND / 2U),
-  onTicks_(BSP::TICKS_PER_SECOND / 2U),
-  relayTimeout_(this, ModelEvents::RELAY_TIMEOUT_SIG)
+  onTicks_(BSP::TICKS_PER_SECOND / 2U)
 {
     static_assert(BSP::TICKS_PER_SECOND >= 10U);
     static_assert(BSP::TICKS_PER_SECOND % 10U == 0U);
@@ -100,13 +89,10 @@ Q_STATE_DEF(BlinkyAO, running) {
             status_ = Q_RET_HANDLED;
             break;
         }
-        //${AOs::BlinkyAO::SM::running::TESTALL}
-        case TESTALL_SIG: {
-            if (Blinky::takeSequenceRequest()) {
+        //${AOs::BlinkyAO::SM::running::RELAY_ON}
+        case RELAY_ON_SIG: {
+            if (Blinky::takeOnRequest(Q_EVT_CAST(ModelEvents::RelayEvent)->relay)) {
                 relay_.dispatch(e, 0U);
-            } else {
-                static QP::QEvt const cancel{FORCE_OFF_SIG};
-                relay_.dispatch(&cancel, 0U);
             }
             status_ = Q_RET_HANDLED;
             break;
@@ -120,17 +106,13 @@ Q_STATE_DEF(BlinkyAO, running) {
         }
         //${AOs::BlinkyAO::SM::running::SESSION_LOST}
         case SESSION_LOST_SIG: {
-            if (Blinky::cancelPending()) {
-                static QP::QEvt const cancel{FORCE_OFF_SIG};
-                relay_.dispatch(&cancel, 0U);
-            } else {
-                relay_.dispatch(e, 0U);
-            }
+            static_cast<void>(Blinky::cancelPending());
+            relay_.dispatch(e, 0U);
             status_ = Q_RET_HANDLED;
             break;
         }
-        //${AOs::BlinkyAO::SM::running::RELAY_TIMEOUT}
-        case RELAY_TIMEOUT_SIG: {
+        //${AOs::BlinkyAO::SM::running::RELAY_OFF}
+        case RELAY_OFF_SIG: {
             relay_.dispatch(e, 0U);
             status_ = Q_RET_HANDLED;
             break;

@@ -47,9 +47,7 @@ public:
 protected:
     Q_STATE_DECL(initial);
     Q_STATE_DECL(operational);
-    Q_STATE_DECL(ready);
-    Q_STATE_DECL(pulsing);
-    Q_STATE_DECL(gap);
-    Q_STATE_DECL(locked);
+    Q_STATE_DECL(idle);
+    Q_STATE_DECL(on);
 }; // class RelayTestHsm
 //$enddecl${AOs::RelayTestHsm} ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

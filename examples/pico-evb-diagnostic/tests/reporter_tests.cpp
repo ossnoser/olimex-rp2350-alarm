@@ -13,9 +13,9 @@ struct Fake : Report::Port {
     Carrier::Sample value{20, 15};
     unsigned silicon = 2, samples = 0, services = 0, reads = 0;
     unsigned requests = 0, stops = 0;
-    RelayTest::State state = RelayTest::State::Ready;
+    RelayTest::State state = RelayTest::State::Idle;
     std::uint8_t mask = 0;
-    unsigned step = 1;
+    unsigned active = 0;
     std::size_t credit = 1000, written = 0;
     bool invalidWrite = false;
     std::deque<char> rx;
@@ -35,14 +35,16 @@ struct Fake : Report::Port {
     Carrier::Sample sample() override { ++samples; return value; }
     unsigned revision() override { return silicon; }
     RelayTest::State relayState() override { return state; }
-    unsigned sequenceStep() override { return step; }
+    unsigned activeRelay() override { return active; }
     std::uint8_t commandedRelays() override { return mask; }
-    bool requestSequence() override {
+    bool requestOn(unsigned relay) override {
         ++requests;
-        if (state != RelayTest::State::Ready) return false;
-        state = RelayTest::State::Pulsing; mask = 1; return true;
+        if (state != RelayTest::State::Idle) return false;
+        state = RelayTest::State::On; active = relay;
+        mask = static_cast<std::uint8_t>(1U << (relay - 1U)); return true;
     }
-    void stopTest() override { ++stops; state = RelayTest::State::Locked; mask = 0; }
+    void stopRelay(unsigned relay) override { ++stops; if (active == relay) { state = RelayTest::State::Idle; mask = 0; active = 0; } }
+    void stopAll() override { ++stops; state = RelayTest::State::Idle; mask = 0; active = 0; }
     void poll(Report::Session &session, std::size_t capacity = 1000) {
         credit = capacity; written = reads = 0;
         auto const before = samples;
@@ -119,43 +121,51 @@ int main() {
     Fake ctl;
     auto feed = [&](std::string const &s) { ctl.rx.insert(ctl.rx.end(), s.begin(), s.end()); };
     ctl.flush(commands); ctl.tx.clear();
-    feed("test1\ntest2\nTESTALL\n9\n");
-    for (unsigned i=0;i<5;++i) ctl.poll(commands, 0);
-    CHECK(ctl.requests == 0 && ctl.stops == 0);
-    feed("testall\r\noff\r\n");
+    for (auto const &line : {"test1", "testall", "TESTALL", "on", "on 0", "on 5", "on -1", "on 01",
+                            "ON 1", "on 1 ", " on 1", "on\t1", "off 0", "off 5", "off 01", "off 1x", "off ", "off  1"}) {
+        feed(std::string(line) + "\n"); ctl.flush(commands);
+        CHECK(ctl.requests == 0 && ctl.stops == 0 && ctl.mask == 0);
+    }
+    feed("on 1\r\noff 1\r\n");
     ctl.poll(commands, 0); CHECK(ctl.mask == 1 && ctl.requests == 1);
     ctl.poll(commands, 0); CHECK(ctl.mask == 0 && ctl.stops == 1);
     ctl.poll(commands, 0); CHECK(ctl.stops == 1); // LF is not another command.
-    feed("testall\n"); ctl.poll(commands, 0);
-    CHECK(ctl.requests == 2 && ctl.mask == 0); // Fake rejects LOCKED.
-    ctl.flush(commands);
-    CHECK(ctl.tx.find("LOCKED") != std::string::npos);
+    for (unsigned relay = 1; relay <= 4; ++relay) {
+        feed("on " + std::to_string(relay) + "\n"); ctl.poll(commands, 0);
+        CHECK(ctl.active == relay && ctl.mask == (1U << (relay-1U)));
+        feed("on " + std::to_string(relay%4U+1U) + "\n"); ctl.poll(commands, 0);
+        CHECK(ctl.active == relay);
+        feed("off " + std::to_string(relay%4U+1U) + "\n"); ctl.poll(commands, 0);
+        CHECK(ctl.active == relay);
+        feed("off\n"); ctl.poll(commands, 0); CHECK(ctl.mask == 0 && ctl.active == 0);
+    }
+    auto const attempts = ctl.requests;
     feed(std::string(100, 'x') + "\n");
     for(unsigned i=0;i<8;++i) ctl.poll(commands);
-    CHECK(ctl.requests == 2 && ctl.tx.find("Invalid") != std::string::npos);
+    CHECK(ctl.requests == attempts && ctl.tx.find("Invalid") != std::string::npos);
     // A partial command cannot cross a connection generation boundary.
     Report::Session fresh;
     Fake reconnect;
-    reconnect.rx = {'t','e','s','t'}; reconnect.poll(fresh);
-    ++reconnect.link.generation; reconnect.rx = {'a','l','l','\n'};
+    reconnect.rx = {'o','n',' '}; reconnect.poll(fresh);
+    ++reconnect.link.generation; reconnect.rx = {'1','\n'};
     reconnect.poll(fresh); CHECK(reconnect.requests == 0);
-    // Four-bit command/status formatting remains explicit, including OFF gaps.
+    // Four-bit command/status formatting remains explicit, with no sequence states.
     Report::Session status;
     Fake outputs; outputs.flush(status);
     for (unsigned relay = 1; relay <= 4; ++relay) {
-        outputs.tx.clear(); outputs.step = relay;
-        outputs.state = RelayTest::State::Pulsing;
+        outputs.tx.clear(); outputs.active = relay;
+        outputs.state = RelayTest::State::On;
         outputs.mask = static_cast<std::uint8_t>(1U << (relay - 1U));
         outputs.flush(status);
         std::string bits = "CMD=";
         for (unsigned i = 1; i <= 4; ++i) bits += std::string(i == relay ? "ON" : "OFF") + (i < 4 ? "," : "");
         CHECK(outputs.tx.find(bits) != std::string::npos);
-        CHECK(outputs.tx.find("STEP=" + std::to_string(relay)) != std::string::npos);
+        CHECK(outputs.tx.find("RELAY=" + std::to_string(relay)) != std::string::npos);
         outputs.tx.clear(); outputs.mask = 0;
-        outputs.state = relay < 4 ? RelayTest::State::Gap : RelayTest::State::Locked;
+        outputs.state = RelayTest::State::Idle; outputs.active = 0;
         outputs.flush(status);
         CHECK(outputs.tx.find("CMD=OFF,OFF,OFF,OFF") != std::string::npos);
-        CHECK(outputs.tx.find(relay < 4 ? "SEQ=GAP" : "SEQ=LOCKED") != std::string::npos);
+        CHECK(outputs.tx.find("CTRL=IDLE RELAY=0") != std::string::npos);
     }
     Report::Session broken;
     Fake bad; bad.invalidWrite = true;

@@ -51,6 +51,7 @@ Carrier::Sample Carrier::sample() { ++samples; return {now * 10U, inputMask}; }
 unsigned Carrier::siliconRevision() { return 2; }
 void Carrier::forceRelaysOff() { relayOn = false; }
 bool Carrier::activateRelay(unsigned relay) { relayOn = relay >= 1 && relay <= 4; return relayOn; }
+bool Carrier::deactivateRelay(unsigned relay) { if(relay == 1) relayOn = false; return relay >= 1 && relay <= 4; }
 std::uint8_t Carrier::commandedRelays() { return relayOn ? 1U : 0U; }
 int main(int argc, char **) {
     bool const offline = argc > 1;
@@ -68,7 +69,7 @@ int main(int argc, char **) {
         inputMask = static_cast<std::uint8_t>((tickNumber / 7U) & 15U);
         tick();
         CHECK(samples == now / 2U);
-        CHECK(!relayOn && Blinky::relayState() == RelayTest::State::Ready);
+        CHECK(!relayOn && Blinky::relayState() == RelayTest::State::Idle);
         if (now == 2) CHECK(rx.size() == (offline ? 100U : 84U) && tx.size() <= 64);
     }
     CHECK((offline ? rx.size() == 100U : rx.empty()) && changes.size() == 9);

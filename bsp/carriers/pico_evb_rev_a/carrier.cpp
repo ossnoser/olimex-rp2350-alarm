@@ -42,6 +42,12 @@ bool Carrier::activateRelay(unsigned relay) {
     relayCommands.store(1U << (relay - 1U), std::memory_order_release);
     return true;
 }
+bool Carrier::deactivateRelay(unsigned relay) {
+    if (relay < 1U || relay > 4U) return false;
+    gpio_clr_mask(1U << RELAYS[relay - 1U]);
+    relayCommands.fetch_and(~(1U << (relay - 1U)), std::memory_order_acq_rel);
+    return true;
+}
 std::uint8_t Carrier::commandedRelays() {
     return static_cast<std::uint8_t>(relayCommands.load(std::memory_order_acquire));
 }

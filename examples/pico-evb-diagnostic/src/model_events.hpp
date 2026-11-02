@@ -9,10 +9,17 @@ enum Signals : QP::QSignal {
     DUTY_SIG,
     SAMPLE_SIG,
     USB_SERVICE_SIG,
-    TESTALL_SIG,
+    RELAY_ON_SIG,
     FORCE_OFF_SIG,
     SESSION_LOST_SIG,
-    RELAY_TIMEOUT_SIG
+    RELAY_OFF_SIG
+};
+
+// Immutable static event payload; logical channel, never GPIO number.
+struct RelayEvent : QP::QEvt {
+    unsigned const relay;
+    constexpr RelayEvent(QP::QSignal signal, unsigned channel)
+        : QP::QEvt(signal), relay(channel) {}
 };
 
 struct DutyEvent : QP::QEvt {
